@@ -57,7 +57,7 @@ mixture <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM",
 
   mymodel <- list(multigroup=mg,k=k,data=data); class(mymodel) <- "lvm.mixture"
   if (is.null(optim$start)) {
-    constrLogLik <- function(p) {      
+    constrLogLikS <- function(p) {      
       if (optim$constrain) {
         p[constrained] <- exp(p[constrained])
       }
@@ -67,15 +67,15 @@ mixture <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM",
     if (length(offdiagpos)>0)
       start[mg$npar.mean + offdiagpos] <- 0
     if (optim$nstart>1) {
-      myll <- constrLogLik(start)
+      myll <- constrLogLikS(start)
       for (i in 1:optim$nstart) {
         newstart <- runif(npar,optim$startbounds[1],optim$startbounds[2]);
-        newmyll <- constrLogLik(newstart)
+        newmyll <- constrLogLikS(newstart)
         if (newmyll<myll) {
           start <- newstart
         }
       }
-    }##    start <- optim(1:4,constrLogLik,method="SANN",control=list(maxit=50))
+    }##    start <- optim(1:4,constrLogLikS,method="SANN",control=list(maxit=50))
     optim$start <- start
   }
   
@@ -92,12 +92,12 @@ mixture <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM",
   member <- rep(1,nrow(data))
   E <- Inf
 
-  constrLogLik <- function(p,prob) {      
-    if (optim$constrain) {
-      p[constrained] <- exp(p[constrained])
-    }
-    logLik(mymodel,p=p,prob=prob)
-  }
+  ## constrLogLik <- function(p,prob) {      
+  ##   if (optim$constrain) {
+  ##     p[constrained] <- exp(p[constrained])
+  ##   }
+  ##   logLik(mymodel,p=p,prob=prob)
+  ## }
   ## EM algorithm:
   myObj <- function(p) {
     if (optim$constrain) {
