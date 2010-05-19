@@ -1,0 +1,12 @@
+import(lava)
+import(utils)
+import(stats)
+
+export(
+       mixture
+       )
+
+S3method(coef, lvm.mixture)
+S3method(vcov, lvm.mixture)
+S3method(print, lvm.mixture)
+S3method(summary, lvm.mixture)
