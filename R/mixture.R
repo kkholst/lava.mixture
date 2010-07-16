@@ -63,6 +63,7 @@ mixture <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM",
       }
       -logLik(mymodel,p=p,rep(1/k,k))
     }
+
     start <- runif(npar,optim$startbounds[1],optim$startbounds[2]);
     if (length(offdiagpos)>0)
       start[mg$npar.mean + offdiagpos] <- 0
@@ -83,7 +84,13 @@ mixture <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM",
     optim$prob <- rep(1/k,k-1)
   thetacur <- optim$start
   probcur <- with(optim, c(prob,1-sum(prob)))
-  probs <- rbind(probcur); thetas <- rbind(thetacur)
+  probs <- rbind(probcur);
+
+  thetas <- rbind(thetacur)
+  if (optim$constrain) {
+    thetas[constrained] <- exp(thetas[constrained])
+  }
+  
   gamma <- t(rmultinom(nrow(data),1,probs))
   gammas <- list()
   curloglik <- logLik(mymodel,p=thetacur,prob=probcur)
@@ -119,7 +126,7 @@ mixture <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM",
       p[constrained] <- exp(p[constrained])
     }
     myp <- modelPar(mg,p)$p
-    D <- lapply(1:k, function(j) gamma[,j]*score(mg$lvm[[j]],p=myp[[j]],data=data))
+    D <- lapply(1:k, function(j) gamma[,j]*score(mg$lvm[[j]],p=myp[[j]],data=data,indiv=TRUE))
     D0 <- matrix(0,nrow(data),length(p))
     for (j in 1:k) D0[,parpos[[j]]] <- D0[,parpos[[j]]]+D[[j]]
     S <- -colSums(D0)
@@ -142,7 +149,7 @@ mixture <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM",
       p[constrained] <- exp(p[constrained])
     }
     myp <- modelPar(mg,p)$p    
-    I <- lapply(1:k, function(j) probcur[j]*information(mg$lvm[[j]],p=myp[[j]],n=nrow(data)))
+    I <- lapply(1:k, function(j) probcur[j]*information(mg$lvm[[j]],p=myp[[j]],n=nrow(data),data=data))
     I0 <- matrix(0,length(p),length(p))
     for (j in 1:k) {
       I0[parpos[[j]],parpos[[j]]] <- I0[parpos[[j]],parpos[[j]]] + I[[j]]
@@ -158,21 +165,20 @@ mixture <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM",
     }
     return(I0)
   }
-
   Scoring <- function(p) {
     p.orig <- p
     if (optim$constrain) {
       p[constrained] <- exp(p[constrained])
     }
     myp <- modelPar(mg,p)$p
-    D <- lapply(1:k, function(j) gamma[,j]*score(mg$lvm[[j]],p=myp[[j]],data=data))
+    D <- lapply(1:k, function(j) gamma[,j]*score(mg$lvm[[j]],p=myp[[j]],data=data,indiv=TRUE))
     D0 <- matrix(0,nrow(data),length(p))
     for (j in 1:k) D0[,parpos[[j]]] <- D0[,parpos[[j]]]+D[[j]]
     S <- colSums(D0)
     if (optim$constrain) {
       S[constrained] <- S[constrained]*p[constrained]
     }
-    I <- lapply(1:k, function(j) probcur[j]*information(mg$lvm[[j]],p=myp[[j]],n=nrow(data)))
+    I <- lapply(1:k, function(j) probcur[j]*information(mg$lvm[[j]],p=myp[[j]],n=nrow(data),data=data))
     I0 <- matrix(0,length(p),length(p))
     for (j in 1:k) {
       I0[parpos[[j]],parpos[[j]]] <- I0[parpos[[j]],parpos[[j]]] + I[[j]]
@@ -207,7 +213,7 @@ mixture <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM",
             return(res)
           }
           )
-  
+
 
   mytheta <- thetacur
   if (optim$constrain) {
@@ -228,8 +234,9 @@ mixture <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM",
     if (count==optim$trace) {
       cat("Err: ", E, "\n")
 ##      print(E>optim$tol)      
-      print(mytheta); count <- 0
+      print(as.vector(mytheta)); count <- 0
     }
+
     probs <- rbind(probs,probcur)
     pp <- modelPar(mg,mytheta)$p
     logff <- sapply(1:k, function(j) (logLik(mg$lvm[[j]],p=pp[[j]],data=data,indiv=TRUE)))
@@ -237,7 +244,9 @@ mixture <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM",
 ##    print(dim(logff))
 ##    print(logff)
 ##    pff <- t(apply(exp(logff),1, function(y) y*probcur))
-    logplogff <- t(apply(logff,1, function(y) y+log(probcur)))
+
+    
+    logplogff <- t(apply(logff,1, function(z) z+log(probcur)))
     ## Log-sum-exp (see e.g. NR)
     zmax <- apply(logplogff,1,max)
     logsumpff <- log(rowSums(exp(logplogff-zmax)))+zmax    
@@ -281,7 +290,7 @@ mixture <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM",
       if (optim$method=="BFGS") {
         opt <- nlminb(thetacur,myObj,gradient=myGrad,hessian=myInformation,lower=lower, control=list(iter.max=10))  
         thetacur <- opt$par
-      } else {
+      } else {     
         probcur <- colMeans(gamma)
         oldpar <- thetacur
         count2 <- 0
@@ -406,7 +415,7 @@ coef.lvm.mixture <- function(object,iter,list=FALSE,prob=FALSE,class=FALSE,...) 
   }
   if (prob) {
     res <- object$prob
-    }  
+    }
   if (missing(iter))
     return(res[N,])
   else
