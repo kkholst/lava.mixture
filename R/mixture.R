@@ -1,5 +1,6 @@
 
 ###{{{ mixture
+
 mixture <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM","SEM"),...) {    
 
   optim <- list(start=NULL,
@@ -322,6 +323,7 @@ mixture <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM",
   class(res) <- "lvm.mixture"
   return(res)
 }
+
 ###}}} mixture
 
 ###{{{ logLik
