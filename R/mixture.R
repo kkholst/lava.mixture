@@ -57,6 +57,7 @@ mixture <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM",
   if (!any(constrained)) optim$constrain <- FALSE
 
   mymodel <- list(multigroup=mg,k=k,data=data); class(mymodel) <- "lvm.mixture"
+
   if (is.null(optim$start)) {
     constrLogLikS <- function(p) {      
       if (optim$constrain) {
@@ -379,8 +380,37 @@ vcov.lvm.mixture <- function(object,...) {
 
 ###{{{ summary/print
 
-summary.lvm.mixture <- function(object,...) {
-  object
+summary.lvm.mixture <- function(object,labels=0,...) {
+  mm <- object$multigroup$lvm
+  p <- coef(object,list=TRUE)
+  coefs <- list()
+  ncluster <- c()
+  for (i in 1:length(mm)) {
+    cc <- coef(mm[[i]],p=p[[i]],data=NULL)
+    nn <- coef(mm[[i]],mean=TRUE,labels=labels)
+    nm <- index(mm[[i]])$npar.mean
+    if (nm>0) {
+      nn <- c(nn[-(1:nm)],nn[1:nm])
+    }
+    rownames(cc) <- nn
+    attributes(cc)[c("type","var","from","latent")] <- NULL
+    coefs <- c(coefs, list(cc))
+    ncluster <- c(ncluster,sum(object$member==i))
+  }
+  res <- list(coef=coefs,ncluster=ncluster)
+  class(res) <- "summary.lvm.mixture"
+  return(res)
+}
+
+print.summary.lvm.mixture <- function(object,...) {
+  space <- paste(rep(" ",12),collapse="")
+  for (i in 1:length(object$coef)) {
+    cat("Cluster ",i," (n=",object$ncluster[i],"):\n",sep="")
+    cat(rep("-",50),"\n",sep="")
+    print(object$coef[[i]], quote=FALSE)
+    cat("\n")   
+  }
+  invisible(par)  
 }
 
 print.lvm.mixture <- function(x,...) {
