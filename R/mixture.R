@@ -347,7 +347,7 @@ ll  <- function(object,p=coef(object),prob) {
   return(loglik)
 }
 
-logLik.lvm.mixture <- function(object,p=coef(object),prob) {
+logLik.lvm.mixture <- function(object,p=coef(object),prob,...) {
   myp <- modelPar(object$multigroup,p)$p
   if (missing(prob))
     prob <- coef(object,prob=TRUE)
@@ -402,12 +402,12 @@ summary.lvm.mixture <- function(object,labels=0,...) {
   return(res)
 }
 
-print.summary.lvm.mixture <- function(object,...) {
+print.summary.lvm.mixture <- function(x,...) {
   space <- paste(rep(" ",12),collapse="")
-  for (i in 1:length(object$coef)) {
-    cat("Cluster ",i," (n=",object$ncluster[i],"):\n",sep="")
+  for (i in 1:length(x$coef)) {
+    cat("Cluster ",i," (n=",x$ncluster[i],"):\n",sep="")
     cat(rep("-",50),"\n",sep="")
-    print(object$coef[[i]], quote=FALSE)
+    print(x$coef[[i]], quote=FALSE)
     cat("\n")   
   }
   invisible(par)  

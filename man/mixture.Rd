@@ -11,6 +11,7 @@ mixture(x, data, k=length(x), control, FUN, type=c("standard","CEM","SEM"),...)
   \item{x}{List of \code{lvm} objects. If only a single \code{lvm}
     object is given, then a \code{k}-mixture of this model is fitted
     (free parameters varying between mixture components).}
+  \item{data}{\code{data.frame}}
   \item{k}{Number of mixture components}
   \item{control}{Optimization parameters (see details).}
   \item{FUN}{See details below.}
