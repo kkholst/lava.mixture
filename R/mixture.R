@@ -1,4 +1,3 @@
-
 ###{{{ mixture
 
 mixture <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM","SEM"),...) {    
@@ -8,6 +7,7 @@ mixture <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM",
                 startmean=FALSE,
                 nstart=3,
                 prob=NULL,
+                iter.EM=5,
                 iter.max=500,
                 delta=1e-2,
                 stabil=TRUE,
@@ -94,7 +94,8 @@ mixture <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM",
   }
   
   gamma <- t(rmultinom(nrow(data),1,probs))
-  gammas <- list()
+  newgamma <- gamma
+##  gammas <- list()
   curloglik <- logLik(mymodel,p=thetacur,prob=probcur)
   vals <- c(curloglik)
   i <- count <- 0
@@ -205,13 +206,13 @@ mixture <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM",
     p.orig + optim$gamma*solve(I0)%*%S
 ##   p.orig + solve(I0+optim$lambda*diag(nrow(I0)))%*%S
   }
-  
 
   on.exit(
           {
             member <- apply(gamma,1,which.max)
-            res <- list(prob=probs,theta=thetas, objective=vals, gamma=gammas, k=k, member=member, data=data, parpos=parpos, multigroup=mg, model=mg$lvm, logLik=vals);
+            res <- list(prob=probs,theta=thetas, objective=vals, gamma=newgamma, k=k, member=member, data=data, parpos=parpos, multigroup=mg, model=mg$lvm, logLik=vals);
             class(res) <- "lvm.mixture"
+            res$vcov <- solve(information.lvm.mixture(res))
             return(res)
           }
           )
@@ -227,7 +228,7 @@ mixture <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM",
     if (!missing(FUN)) {
 ##      if (!missing(FUN) & i>0) {
       member <- apply(gamma,1,which.max)
-      res <- list(prob=probs,theta=thetas, objective=vals, gamma=gammas, k=k, member=member, data=data, parpos=parpos, multigroup=mg, model=mg$lvm);      
+      res <- list(prob=probs,theta=thetas, objective=vals, gamma=newgamma, k=k, member=member, data=data, parpos=parpos, multigroup=mg, model=mg$lvm);      
       class(res) <- "lvm.mixture"
       dummy <- FUN(res)
     }
@@ -246,7 +247,6 @@ mixture <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM",
 ##    print(dim(logff))
 ##    print(logff)
 ##    pff <- t(apply(exp(logff),1, function(y) y*probcur))
-
     
     logplogff <- t(apply(logff,1, function(z) z+log(probcur)))
     ## Log-sum-exp (see e.g. NR)
@@ -314,15 +314,10 @@ mixture <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM",
       }
     }
       thetas <- rbind(thetas,as.vector(mytheta))
-      gammas <- c(gammas, list(gamma))
+    newgamma <- gamma
+##      gammas <- c(gammas, list(gamma))
       E <- sum((mytheta-mythetaold)^2)
   }
-  
-
-  member <- apply(gamma,1,which.max)
-  res <- list(prob=probs,theta=thetas, objective=vals, gamma=gammas, k=k, member=member, data=data, parpos=parpos, multigroup=mg, model=mg$lvm, logLik=vals);
-  class(res) <- "lvm.mixture"
-  return(res)
 }
 
 ###}}} mixture
@@ -347,7 +342,42 @@ ll  <- function(object,p=coef(object),prob) {
   return(loglik)
 }
 
-logLik.lvm.mixture <- function(object,p=coef(object),prob,...) {
+score.lvm.mixture <- function(object,theta=c(p,prob),p=coef(object),prob,indiv=FALSE,...) {
+  myp <- modelPar(object$multigroup,p)$p
+  if (missing(prob))
+    prob <- coef(object,prob=TRUE)
+  if (length(prob)<object$k)
+    prob <- c(prob,1-sum(prob))
+  logff <- sapply(1:object$k, function(j) (logLik(object$multigroup$lvm[[j]],p=myp[[j]],data=object$data,indiv=TRUE)))
+  logplogff <- t(apply(logff,1, function(y) y+log(prob)))
+  zmax <- apply(logplogff,1,max)
+  logsumpff <- log(rowSums(exp(logplogff-zmax)))+zmax
+  aji <- apply(logplogff,2,function(x) exp(x-logsumpff))
+  
+  scoref <- lapply(score(object$multigroup,p=p,indiv=TRUE),                   
+                   function(x) { x[which(is.na(x))] <- 0; x })
+
+  Stheta <- matrix(0,ncol=ncol(scoref[[1]]),nrow=nrow(scoref[[1]]))
+  Spi <- matrix(0,ncol=object$k-1,nrow=nrow(Stheta))
+  for (j in 1:object$k) {
+    Stheta <- Stheta + apply(scoref[[j]],2,function(x) x*aji[,j])
+    if (j<object$k)
+      Spi[,j] <- aji[,j]/prob[j] - aji[,object$k]/prob[object$k]
+  }
+  S <- cbind(Spi,Stheta)
+  if (!indiv)
+    return(colSums(S))
+  return(S)
+}
+
+information.lvm.mixture <- function(object,...) {
+  S <- score.lvm.mixture(object,indiv=TRUE,...)
+  res <- t(S)%*%S
+  attributes(res)$grad <- colSums(S)
+  return(res)
+}
+
+logLik.lvm.mixture <- function(object,theta=c(p,prob),p=coef(object),prob,...) {
   myp <- modelPar(object$multigroup,p)$p
   if (missing(prob))
     prob <- coef(object,prob=TRUE)
@@ -373,24 +403,26 @@ logLik.lvm.mixture <- function(object,p=coef(object),prob,...) {
 ###{{{ vcov
 
 vcov.lvm.mixture <- function(object,...) {
-  return(NULL)
+  return(object$vcov)
 }
 
-###}}}
+###}}}z
 
 ###{{{ summary/print
 
 summary.lvm.mixture <- function(object,labels=0,...) {
   mm <- object$multigroup$lvm
   p <- coef(object,list=TRUE)
+  p0 <- coef(object)
+  myp <- modelPar(object$multigroup,1:length(p0))$p
   coefs <- list()
   ncluster <- c()
   for (i in 1:length(mm)) {
-    cc <- coef(mm[[i]],p=p[[i]],data=NULL)
+    cc <- coef(mm[[i]],p=p[[i]],vcov=vcov(object)[myp[[i]],myp[[i]]],data=NULL)
     nn <- coef(mm[[i]],mean=TRUE,labels=labels)
     nm <- index(mm[[i]])$npar.mean
     if (nm>0) {
-      nn <- c(nn[-(1:nm)],nn[1:nm])
+       nn <- c(nn[-(1:nm)],nn[1:nm])
     }
     rownames(cc) <- nn
     attributes(cc)[c("type","var","from","latent")] <- NULL
@@ -436,7 +468,7 @@ plot.lvm.mixture <- function(x,...) {
 
 ###{{{ coef
 
-coef.lvm.mixture <- function(object,iter,list=FALSE,prob=FALSE,class=FALSE,...) {
+coef.lvm.mixture <- function(object,iter,list=FALSE,full=FALSE,prob=FALSE,class=FALSE,...) {
   N <- nrow(object$theta)
   res <- object$theta
   if (list) {
@@ -447,7 +479,7 @@ coef.lvm.mixture <- function(object,iter,list=FALSE,prob=FALSE,class=FALSE,...) 
   }
   if (prob) {
     res <- object$prob
-    }
+  }
   if (missing(iter))
     return(res[N,])
   else
