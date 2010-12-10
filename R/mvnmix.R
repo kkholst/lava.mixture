@@ -1,0 +1,203 @@
+toTheta <- function(mu,Sigma,p) {
+  theta <- c(as.vector(t(mu)), as.vector(t(Sigma)), p[-nrow(mu)])
+  return(theta)
+}
+toPar <- function(theta, D, k) {
+  mus <- Sigmas <- c()
+  for (j in 1:k) {
+    muj.idx <- (1+((j-1)*D)):(j*D)
+    mus <- rbind(mus, theta[muj.idx])
+    Sigmaj.start <- k*D+1 + ((j-1)*D^2)
+    Sigmaj.idx <- Sigmaj.start + 1:D^2-1
+    Sigmas <- rbind(Sigmas, theta[Sigmaj.idx])
+  };  ps <- tail(theta,k-1); ps <- c(ps,1-sum(ps))
+  return(list(mu=mus, Sigma=Sigmas, p=ps))
+}
+coef.mvn.mixture <- function(object,k,iter,...) {
+  if (missing(iter))
+    pp <- with(object,toPar(theta,D,k))
+  else
+    pp <- with(object,toPar(thetas[iter,],D,k))
+  res <- list()
+  for (i in 1:object$k) {
+    mu <- pp$mu[i,]
+    V <- matrix(pp$Sigma[i,],ncol=object$D);
+    res <- c(res, list(list(mean=mu, var=V)))
+  }
+  if (missing(k))
+    return(res)
+  else
+    return(res[[k]])  
+}
+
+mvnmix <- function(y, k=2, theta, steps=100,
+                 epsilon=1e-9, lambda=1e-9,
+                 mu=NULL,
+                 silent=TRUE, extra=FALSE, ...
+                 )  {
+  if (k<2) stop("Only one cluster")
+  ## theta = (mu1, ..., muk, Sigma1, ..., Sigmak, p1, ..., p[k-1])
+  if (is.vector(y)) y <- matrix(y,ncol=1)
+  if (is.data.frame(y)) y <- as.matrix(y)
+  require(mvtnorm)
+  i <- 0
+  E <- epsilon
+  n <- nrow(y)
+  D <- ncol(y)
+  yunique <- unique(y)
+  if (missing(theta)) {
+    mus <- c()
+    if (!is.null(mu)) {
+      mus <- mu
+    } else
+    for (j in 1:k) {
+      mus <- c(mus, yunique[sample(nrow(yunique),1),])
+    }
+    Sigmas <- rep(as.vector(cov(y)),k)
+    ps <- rep(1/k,k-1)
+    theta <- c(mus,Sigmas,ps)
+  }
+  theta0 <- theta
+  if (!silent)
+    cat(i,":\t", paste(formatC(theta0),collapse=" "),"\n")
+  thetas <- members <- c()
+  
+  while ((i<steps) & (E>=epsilon)) {
+    if (extra)
+      thetas <- rbind(thetas, theta)
+    pp <- toPar(theta,D,k)
+    mus <- pp$mu; Sigmas <- pp$Sigma; ps <- pp$p
+    ## E(expectation step)
+    phis <- c()
+    for (j in 1:k) {
+      C <- matrix(Sigmas[j,],ncol=D); diag(C) <- diag(C)+lambda ## Assure C is not singular
+      phis <- cbind(phis, dmvnorm(y,mus[j,],C))
+    }
+    gammas <- c()
+    denom <- t(ps%*%t(phis))
+    for (j in 1:k) {
+      gammas <- cbind(gammas, ps[j]*phis[,j]/denom)
+    }
+    
+    sqrtgammas <- sqrt(gammas)
+    ## M(aximization step)
+    mus.new <- c()
+    Sigmas.new <- c()
+    for (j in 1:k) {
+      if (!is.null(mu)) mus.new <- mu
+      else {
+        mu.new <- colSums(gammas[,j]*y/sum(gammas[,j]))
+        mus.new <- rbind(mus.new, mu.new)
+      }
+      Sigma.new <- 0
+      wcy <- sqrtgammas[,j]*t(t(y)-mus.new[[j]])
+      Sigma.new <- t(wcy)%*%wcy/sum(gammas[,j])
+      ## for (l in 1:n) {
+      ##   Sigma.new <- Sigma.new + gammas[l,j]*(y[l,]-mu.new)%*%t(y[l,]-mu.new)
+      ## }; Sigma.new <- Sigma.new/sum(gammas[,j])      
+      Sigmas.new <- rbind(Sigmas.new, as.vector(Sigma.new))
+    }; ps.new <- colMeans(gammas)
+    theta.old <- theta
+    if (extra)
+      members <- cbind(members,
+                       apply(gammas,1,function(x) order(x,decreasing=TRUE)[1]))
+  theta <- toTheta(mus.new,Sigmas.new,ps.new)
+  E <- sum((theta-theta.old)^2)
+    i <- i+1
+    if (!silent)
+      cat(i,":\t", paste(formatC(theta),collapse=" "),
+          ",\t\te=",formatC(E), "\n",sep="")
+  }
+  
+  membership <- apply(gammas,1,function(x) order(x,decreasing=TRUE)[1])
+  res <- list(theta=theta, thetas=thetas , gammas=gammas, member=membership, members=members, k=k, D=D, data=y, E=E)
+  class(res) <- "mvn.mixture"
+  return(res)
+}
+
+print.mvn.mixture <- function(x,...) {
+  par <- toPar(x$theta,x$D,x$k)
+  space <- paste(rep(" ",12),collapse="")
+  for (i in 1:x$k) {
+    cat("Cluster ",i," (p=",formatC(par$p[i]),"):\n",sep="")
+    cat(rep("-",50),"\n",sep="")
+    cat("\tcenter = \n ",space,paste(formatC(par$mu[i,]),collapse=" "),sep="")
+    cat("\n\tvariance = \t");
+    V <- matrix(formatC(par$Sigma[i,],flag=" "),ncol=x$D);
+    colnames(V) <- rep("",x$D); rownames(V) <- rep(space,x$D)
+    print(V, quote=FALSE)
+    cat("\n")   
+  }
+  invisible(par)
+}
+
+plot.mvn.mixture <- function(x, label=2,iter,col,alpha=0.5,nonpar=TRUE,...) {
+  opts <- list(...)
+  ##  cols <- opts$col; if(is.null(cols)) cols <- 1:gmfit$k
+  if (missing(col)) col <- 1:x$k
+  lwd <- opts$lwd; if (is.null(lwd)) lwd <- 2
+  cex <- opts$cex; if(is.null(cex)) cex <- 0.9
+  y <- x$data
+  if (is.vector(y)) y <- matrix(y,ncol=1)
+  pp <- coef(x,iter=iter)
+  D <- ncol(y)
+
+  pi <- colSums(x$gammas)/nrow(x$gammas)
+
+  if (D==1) {
+    if (nonpar)
+      plot(density(y), main="", ...)
+    else
+      plot(density(y), main="", title="", type="n", col="lightgray", ...)
+    if (!is.null(label)) {
+      for (i in 1:x$k) {
+        rug(y[x$member==i], col=col[i])
+      }
+    }
+    else
+      rug(y)
+    cc <- par("usr")
+    {
+      mycurve <- function(xx) {
+        a <- 0;
+        for (i in 1:(x$k)) 
+          a <- a+pi[i]*dnorm(xx,pp[[i]]$mean,sqrt(pp[[i]]$var[1]))
+        a
+      }
+      curve(mycurve, from=cc[1], to=cc[2], add=TRUE, lwd=lwd,...)
+    }
+  }
+  if (D==2) {
+    require(ellipse)
+    plot(y, type="n", ...)
+
+    for (i in 1:x$k) {
+      C1 <- with(pp[[i]], ellipse(var, centre=mean))
+      lines(C1, col=col[i], lwd=lwd)      
+    }
+    
+    if (!is.null(label)) {
+      for (i in 1:x$k) {
+        if (label==1 | missing(iter)) {
+          pot <- y[which(x$member==i),]
+        }
+        else {
+          pot <- y[which(x$members[,iter]==i),]
+        }
+        points(pot, cex=cex, pch=16, col=do.call(rgb, as.list(col2rgb(col[i])/255,alpha)))
+      }
+    }
+    else
+      points(y, cex=cex)
+  }
+  if (D==3) {    
+    if (!require(rgl)) stop("rgl required")
+    plot3d(y, type="n", box=FALSE)
+    for (i in 1:x$k) {
+      pot <- y[which(x$member==i),]
+      plot3d(pot, type="s", radius=0.1, col=col[i], add=TRUE)
+      ee <- ellipse3d(pp[[i]]$var,centre=pp[[i]]$mean)
+      plot3d(ee, col=col[i], alpha=alpha, add = TRUE)      
+    }
+  }  
+}
