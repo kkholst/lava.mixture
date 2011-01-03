@@ -13,9 +13,9 @@ toPar <- function(theta, D, k) {
   };  ps <- tail(theta,k-1); ps <- c(ps,1-sum(ps))
   return(list(mu=mus, Sigma=Sigmas, p=ps))
 }
-coef.mvn.mixture <- function(object,k,iter,...) {
+getMeanVar <- function(object,k,iter,...) {
   if (missing(iter))
-    pp <- with(object,toPar(theta,D,k))
+    pp <- with(object,toPar(pars,D,k))
   else
     pp <- with(object,toPar(thetas[iter,],D,k))
   res <- list()
@@ -30,8 +30,8 @@ coef.mvn.mixture <- function(object,k,iter,...) {
     return(res[[k]])  
 }
 
-mvnmix <- function(y, k=2, theta, steps=100,
-                 epsilon=1e-9, lambda=1e-9,
+mvnmix <- function(y, k=2, theta, steps=500,
+                 tol=1e-16, lambda=1e-16,
                  mu=NULL,
                  silent=TRUE, extra=FALSE, ...
                  )  {
@@ -41,7 +41,7 @@ mvnmix <- function(y, k=2, theta, steps=100,
   if (is.data.frame(y)) y <- as.matrix(y)
   require(mvtnorm)
   i <- 0
-  E <- epsilon
+  E <- tol
   n <- nrow(y)
   D <- ncol(y)
   yunique <- unique(y)
@@ -62,7 +62,7 @@ mvnmix <- function(y, k=2, theta, steps=100,
     cat(i,":\t", paste(formatC(theta0),collapse=" "),"\n")
   thetas <- members <- c()
   
-  while ((i<steps) & (E>=epsilon)) {
+  while ((i<steps) & (E>=tol)) {
     if (extra)
       thetas <- rbind(thetas, theta)
     pp <- toPar(theta,D,k)
@@ -86,15 +86,17 @@ mvnmix <- function(y, k=2, theta, steps=100,
     for (j in 1:k) {
       if (!is.null(mu)) mus.new <- mu
       else {
-        mu.new <- colSums(gammas[,j]*y/sum(gammas[,j]))
+        mu.new <- colSums(gammas[,j]*y)/sum(gammas[,j])
         mus.new <- rbind(mus.new, mu.new)
       }
-      Sigma.new <- 0
-      wcy <- sqrtgammas[,j]*t(t(y)-mus.new[[j]])
-      Sigma.new <- t(wcy)%*%wcy/sum(gammas[,j])
+      ##      browser()
+      ##tcrossprod(t(y)-mus.new[[j]])
+      wcy <- sqrtgammas[,j]*t(t(y)-mus.new[j,])
+      Sigma.new <- t(wcy)%*%wcy/sum(gammas[,j])      
+      ## Sigma.new <- 0
       ## for (l in 1:n) {
-      ##   Sigma.new <- Sigma.new + gammas[l,j]*(y[l,]-mu.new)%*%t(y[l,]-mu.new)
-      ## }; Sigma.new <- Sigma.new/sum(gammas[,j])      
+      ##    Sigma.new <- Sigma.new + gammas[l,j]*(y[l,]-mu.new)%*%t(y[l,]-mu.new)
+      ##  }; Sigma.new <- Sigma.new/sum(gammas[,j])      
       Sigmas.new <- rbind(Sigmas.new, as.vector(Sigma.new))
     }; ps.new <- colMeans(gammas)
     theta.old <- theta
@@ -104,19 +106,51 @@ mvnmix <- function(y, k=2, theta, steps=100,
   theta <- toTheta(mus.new,Sigmas.new,ps.new)
   E <- sum((theta-theta.old)^2)
     i <- i+1
+    iter <- i    
     if (!silent)
       cat(i,":\t", paste(formatC(theta),collapse=" "),
           ",\t\te=",formatC(E), "\n",sep="")
   }
+
+  myvars <- colnames(y)
+  if (is.null(myvars)) myvars <- colnames(y) <- paste("y",1:NCOL(y),sep="")
+  y <- as.data.frame(y)
+  m <- lvm(myvars,silent=TRUE); m <- covariance(m,myvars)
+  models <- datas <- c()
+  for (i in 1:k) {
+    models <- c(models, list(m))
+    datas <- c(datas, list(y))
+  }
+
   
   membership <- apply(gammas,1,function(x) order(x,decreasing=TRUE)[1])
-  res <- list(theta=theta, thetas=thetas , gammas=gammas, member=membership, members=members, k=k, D=D, data=y, E=E)
-  class(res) <- "mvn.mixture"
+  res <- list(pars=theta, thetas=thetas , gammas=gammas, member=membership,
+              members=members, k=k, D=D, data=y, E=E,
+              prob=rbind(colMeans(gammas)),
+              iter=iter,
+              models=models,      
+              multigroup=multigroup(models,datas)              
+              )
+  class(res) <- c("mvn.mixture","lvm.mixture")
+
+  parpos <- c()
+  npar1 <- D+D*(D-1)/2  
+  for (i in 1:k)
+    parpos <- c(parpos, list(c(seq_len(D)+(i-1)*D, k*D + seq_len(npar1)+
+                               (i-1)*(npar1))))
+  
+  theta <- c(unlist(lapply(getMeanVar(res),function(x) x$mean)),
+             unlist(lapply(getMeanVar(res),function(x) c(diag(x$var),unlist(x$var[upper.tri(x$var)])))))
+  res$theta <- rbind(theta)
+  res$parpos <- parpos
+  res$opt <- list(estimate=theta)
+  browser()
+  res$vcov <- solve(information(res))   
   return(res)
 }
 
 print.mvn.mixture <- function(x,...) {
-  par <- toPar(x$theta,x$D,x$k)
+  par <- toPar(x$pars,x$D,x$k)
   space <- paste(rep(" ",12),collapse="")
   for (i in 1:x$k) {
     cat("Cluster ",i," (p=",formatC(par$p[i]),"):\n",sep="")
@@ -137,18 +171,17 @@ plot.mvn.mixture <- function(x, label=2,iter,col,alpha=0.5,nonpar=TRUE,...) {
   if (missing(col)) col <- 1:x$k
   lwd <- opts$lwd; if (is.null(lwd)) lwd <- 2
   cex <- opts$cex; if(is.null(cex)) cex <- 0.9
-  y <- x$data
+  y <- as.matrix(x$data)
   if (is.vector(y)) y <- matrix(y,ncol=1)
-  pp <- coef(x,iter=iter)
+  pp <- getMeanVar(x,iter=iter)
   D <- ncol(y)
-
   pi <- colSums(x$gammas)/nrow(x$gammas)
 
   if (D==1) {
-    if (nonpar)
-      plot(density(y), main="", ...)
+    if (nonpar)      
+      plot(density(as.vector(y)), main="", ...)
     else
-      plot(density(y), main="", title="", type="n", col="lightgray", ...)
+      plot(density(y), main="", type="n", col="lightgray", ...)
     if (!is.null(label)) {
       for (i in 1:x$k) {
         rug(y[x$member==i], col=col[i])

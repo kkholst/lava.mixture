@@ -5,7 +5,7 @@ mixture <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM",
   optim <- list(start=NULL,
                 startbounds=c(-2,2),
                 startmean=FALSE,
-                nstart=3,
+                nstart=1,
                 prob=NULL,
                 iter.EM=5,
                 iter.max=500,
@@ -14,13 +14,15 @@ mixture <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM",
                 gamma=1,
                 gamma2=1,
                 newton=20,
-                tol=1e-6,
+                tol=1e-5,
+                ltol=1e-5,
                 method="scoring",
                 constrain=TRUE,
+                stopc=2,
                 lbound=1e-9,
                 trace=1,
-                lambda=0, # Stabilizing factor (avoid singularities of I)
-                tol=1e-12)
+                lambda=0 # Stabilizing factor (avoid singularities of I)
+                )
   
   type <- tolower(type[1])
   if (!missing(control))
@@ -100,7 +102,8 @@ mixture <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM",
   vals <- c(curloglik)
   i <- count <- 0
   member <- rep(1,nrow(data))
-  E <- Inf
+  E <- dloglik <- Inf
+  
 
   ## constrLogLik <- function(p,prob) {      
   ##   if (optim$constrain) {
@@ -223,8 +226,13 @@ mixture <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM",
     mytheta <- thetacur
     mytheta[constrained] <- exp(mytheta[constrained])
   }
-  
-  while ((i<optim$iter.max) && (E>optim$tol)) {
+
+  while (i<optim$iter.max) {
+##    browser()
+    if (E<optim$tol) {
+      if (optim$stopc<2 | abs(dloglik)<optim$ltol)
+        break;
+    }
     if (!missing(FUN)) {
 ##      if (!missing(FUN) & i>0) {
       member <- apply(gamma,1,which.max)
@@ -233,12 +241,6 @@ mixture <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM",
       dummy <- FUN(res)
     }
     i <- i+1
-    count <- count+1
-    if (count==optim$trace) {
-      cat("Err: ", E, "\n")
-##      print(E>optim$tol)      
-      print(as.vector(mytheta)); count <- 0
-    }
 
     probs <- rbind(probs,probcur)
     pp <- modelPar(mg,mytheta)$p
@@ -255,8 +257,21 @@ mixture <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM",
 
     oldloglik <- curloglik
     curloglik <- sum(logsumpff)
+    dloglik <- abs(curloglik-oldloglik)
     vals <- c(vals,curloglik)
     
+    count <- count+1
+    if (count==optim$trace) {
+      cat("Iteration ",i,"\n",sep="")
+      cat("\tlogLik=",curloglik,"\n",sep="")
+      cat("\tChange in logLik (1-norm)=",dloglik,"\n",sep="")
+      cat("\tChange in parameter (2-norm):",E,"\n",sep="")
+##      print(E>optim$tol)
+      cat("\tParameter:\n")
+      print(as.vector(mytheta)); count <- 0
+    }
+
+
 ##    sumpff <- rowSums(exp(logplogff));
 ##    sumpff[sumpff==0] <- 1e-6
     
@@ -324,7 +339,7 @@ mixture <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM",
 
 ###{{{ logLik
 
-ll  <- function(object,p=coef(object),prob) {  
+ll  <- function(object,p=coef(object),prob) {
   myp <- modelPar(object$multigroup,p)$p
   ff <- sapply(1:object$k, function(j) exp(logLik(object$multigroup$lvm[[j]],p=myp[[j]],data=object$data,indiv=TRUE)))
   if (missing(prob))
@@ -343,6 +358,7 @@ ll  <- function(object,p=coef(object),prob) {
 }
 
 score.lvm.mixture <- function(object,theta=c(p,prob),p=coef(object),prob,indiv=FALSE,...) {
+  ##  browser()
   myp <- modelPar(object$multigroup,p)$p
   if (missing(prob))
     prob <- coef(object,prob=TRUE)
@@ -364,7 +380,7 @@ score.lvm.mixture <- function(object,theta=c(p,prob),p=coef(object),prob,indiv=F
     if (j<object$k)
       Spi[,j] <- aji[,j]/prob[j] - aji[,object$k]/prob[object$k]
   }
-  S <- cbind(Spi,Stheta)
+  S <- cbind(Stheta,Spi)
   if (!indiv)
     return(colSums(S))
   return(S)
@@ -418,18 +434,20 @@ summary.lvm.mixture <- function(object,labels=0,...) {
   coefs <- list()
   ncluster <- c()
   for (i in 1:length(mm)) {
-    cc <- coef(mm[[i]],p=p[[i]],vcov=vcov(object)[myp[[i]],myp[[i]]],data=NULL)
-    nn <- coef(mm[[i]],mean=TRUE,labels=labels)
-    nm <- index(mm[[i]])$npar.mean
-    if (nm>0) {
-       nn <- c(nn[-(1:nm)],nn[1:nm])
-    }
-    rownames(cc) <- nn
-    attributes(cc)[c("type","var","from","latent")] <- NULL
+    ## cc <- coef(mm[[i]],p=p[[i]],vcov=vcov(object)[myp[[i]],myp[[i]]],data=NULL)
+    ## nn <- coef(mm[[i]],mean=TRUE,labels=labels,symbol="<-")
+    ## nm <- index(mm[[i]])$npar.mean
+    ## if (nm>0) {
+    ##   nn <- c(nn[-(1:nm)],nn[1:nm])
+    ## }
+    ## rownames(cc) <- nn
+    ## attributes(cc)[c("type","var","from","latent")] <- NULL
+    cc <- CoefMat(mm[[i]],p=p[[i]],vcov=vcov(object)[myp[[i]],myp[[i]]],data=NULL,labels=labels)
     coefs <- c(coefs, list(cc))
     ncluster <- c(ncluster,sum(object$member==i))
   }
-  res <- list(coef=coefs,ncluster=ncluster)
+  res <- list(coef=coefs,ncluster=ncluster,prob=tail(object$prob,1),
+              AIC=AIC(object),s2=sum(score(object)^2))
   class(res) <- "summary.lvm.mixture"
   return(res)
 }
@@ -437,11 +455,14 @@ summary.lvm.mixture <- function(object,labels=0,...) {
 print.summary.lvm.mixture <- function(x,...) {
   space <- paste(rep(" ",12),collapse="")
   for (i in 1:length(x$coef)) {
-    cat("Cluster ",i," (n=",x$ncluster[i],"):\n",sep="")
+    cat("Cluster ",i," (n=",x$ncluster[i],", Prior=", formatC(x$prob[i]),"):\n",sep="")
     cat(rep("-",50),"\n",sep="")
     print(x$coef[[i]], quote=FALSE)
-    cat("\n")   
+    if (i<length(x$coef)) cat("\n")
   }
+  cat(rep("-",50),"\n",sep="")
+  cat("AIC=",x$AIC,"\n")
+  cat("||score||^2=",x$s2,"\n")
   invisible(par)  
 }
 

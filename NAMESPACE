@@ -15,6 +15,5 @@ S3method(print, lvm.mixture)
 S3method(summary, lvm.mixture)
 S3method(print, summary.lvm.mixture)
 
-S3method(coef, mvn.mixture)
 S3method(plot, mvn.mixture)
 S3method(print, mvn.mixture)
