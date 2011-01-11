@@ -15,7 +15,7 @@ mixture <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM",
                 gamma2=1,
                 newton=20,
                 tol=1e-6,
-                ltol=1e-6,
+                ltol=NULL,
                 method="scoring",
                 constrain=TRUE,
                 stopc=2,
@@ -27,6 +27,7 @@ mixture <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM",
   type <- tolower(type[1])
   if (!missing(control))
     optim[names(control)] <- control
+  if (is.null(optim$ltol)) optim$ltol <- optim$tol
   if (k==1) {
     if (is.list(x))
       res <- estimate(x[[1]],data,...)
@@ -357,28 +358,28 @@ ll  <- function(object,p=coef(object),prob) {
   return(loglik)
 }
 
-score.lvm.mixture <- function(object,theta=c(p,prob),p=coef(object),prob,indiv=FALSE,...) {
+score.lvm.mixture <- function(x,theta=c(p,prob),p=coef(x),prob,indiv=FALSE,...) {
   ##  browser()
-  myp <- modelPar(object$multigroup,p)$p
+  myp <- modelPar(x$multigroup,p)$p
   if (missing(prob))
-    prob <- coef(object,prob=TRUE)
-  if (length(prob)<object$k)
+    prob <- coef(x,prob=TRUE)
+  if (length(prob)<x$k)
     prob <- c(prob,1-sum(prob))
-  logff <- sapply(1:object$k, function(j) (logLik(object$multigroup$lvm[[j]],p=myp[[j]],data=object$data,indiv=TRUE)))
+  logff <- sapply(1:x$k, function(j) (logLik(x$multigroup$lvm[[j]],p=myp[[j]],data=x$data,indiv=TRUE)))
   logplogff <- t(apply(logff,1, function(y) y+log(prob)))
   zmax <- apply(logplogff,1,max)
   logsumpff <- log(rowSums(exp(logplogff-zmax)))+zmax
   aji <- apply(logplogff,2,function(x) exp(x-logsumpff))
   
-  scoref <- lapply(score(object$multigroup,p=p,indiv=TRUE),                   
+  scoref <- lapply(score(x$multigroup,p=p,indiv=TRUE),                   
                    function(x) { x[which(is.na(x))] <- 0; x })
 
   Stheta <- matrix(0,ncol=ncol(scoref[[1]]),nrow=nrow(scoref[[1]]))
-  Spi <- matrix(0,ncol=object$k-1,nrow=nrow(Stheta))
-  for (j in 1:object$k) {
+  Spi <- matrix(0,ncol=x$k-1,nrow=nrow(Stheta))
+  for (j in 1:x$k) {
     Stheta <- Stheta + apply(scoref[[j]],2,function(x) x*aji[,j])
-    if (j<object$k)
-      Spi[,j] <- aji[,j]/prob[j] - aji[,object$k]/prob[object$k]
+    if (j<x$k)
+      Spi[,j] <- aji[,j]/prob[j] - aji[,x$k]/prob[x$k]
   }
   S <- cbind(Stheta,Spi)
   if (!indiv)
@@ -386,8 +387,8 @@ score.lvm.mixture <- function(object,theta=c(p,prob),p=coef(object),prob,indiv=F
   return(S)
 }
 
-information.lvm.mixture <- function(object,...) {
-  S <- score.lvm.mixture(object,indiv=TRUE,...)
+information.lvm.mixture <- function(x,...) {
+  S <- score.lvm.mixture(x,indiv=TRUE,...)
   res <- t(S)%*%S
   attributes(res)$grad <- colSums(S)
   return(res)

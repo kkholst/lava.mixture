@@ -30,21 +30,20 @@ getMeanVar <- function(object,k,iter,...) {
     return(res[[k]])  
 }
 
-mvnmix <- function(y, k=2, theta, steps=500,
-                 tol=1e-16, lambda=1e-16,
+mvnmix <- function(data, k=2, theta, steps=500,
+                 tol=1e-16, lambda=0,
                  mu=NULL,
                  silent=TRUE, extra=FALSE, ...
                  )  {
   if (k<2) stop("Only one cluster")
   ## theta = (mu1, ..., muk, Sigma1, ..., Sigmak, p1, ..., p[k-1])
-  if (is.vector(y)) y <- matrix(y,ncol=1)
-  if (is.data.frame(y)) y <- as.matrix(y)
-  require(mvtnorm)
+  if (is.vector(data)) data <- matrix(data,ncol=1)
+  if (is.data.frame(data)) data <- as.matrix(data)  
   i <- 0
   E <- tol
-  n <- nrow(y)
-  D <- ncol(y)
-  yunique <- unique(y)
+  n <- nrow(data)
+  D <- ncol(data)
+  yunique <- unique(data)
   if (missing(theta)) {
     mus <- c()
     if (!is.null(mu)) {
@@ -53,7 +52,7 @@ mvnmix <- function(y, k=2, theta, steps=500,
     for (j in 1:k) {
       mus <- c(mus, yunique[sample(nrow(yunique),1),])
     }
-    Sigmas <- rep(as.vector(cov(y)),k)
+    Sigmas <- rep(as.vector(cov(data)),k)
     ps <- rep(1/k,k-1)
     theta <- c(mus,Sigmas,ps)
   }
@@ -71,7 +70,7 @@ mvnmix <- function(y, k=2, theta, steps=500,
     phis <- c()
     for (j in 1:k) {
       C <- matrix(Sigmas[j,],ncol=D); diag(C) <- diag(C)+lambda ## Assure C is not singular
-      phis <- cbind(phis, dmvnorm(y,mus[j,],C))
+      phis <- cbind(phis, dmvnorm(data,mus[j,],C))
     }
     gammas <- c()
     denom <- t(ps%*%t(phis))
@@ -86,12 +85,12 @@ mvnmix <- function(y, k=2, theta, steps=500,
     for (j in 1:k) {
       if (!is.null(mu)) mus.new <- mu
       else {
-        mu.new <- colSums(gammas[,j]*y)/sum(gammas[,j])
+        mu.new <- colSums(gammas[,j]*data)/sum(gammas[,j])
         mus.new <- rbind(mus.new, mu.new)
       }
       ##      browser()
       ##tcrossprod(t(y)-mus.new[[j]])
-      wcy <- sqrtgammas[,j]*t(t(y)-mus.new[j,])
+      wcy <- sqrtgammas[,j]*t(t(data)-mus.new[j,])
       Sigma.new <- t(wcy)%*%wcy/sum(gammas[,j])      
       ## Sigma.new <- 0
       ## for (l in 1:n) {
@@ -112,20 +111,20 @@ mvnmix <- function(y, k=2, theta, steps=500,
           ",\t\te=",formatC(E), "\n",sep="")
   }
 
-  myvars <- colnames(y)
-  if (is.null(myvars)) myvars <- colnames(y) <- paste("y",1:NCOL(y),sep="")
-  y <- as.data.frame(y)
+  myvars <- colnames(data)
+  if (is.null(myvars)) myvars <- colnames(data) <- paste("y",1:NCOL(data),sep="")
+  data <- as.data.frame(data)
   m <- lvm(myvars,silent=TRUE); m <- covariance(m,myvars)
   models <- datas <- c()
   for (i in 1:k) {
     models <- c(models, list(m))
-    datas <- c(datas, list(y))
+    datas <- c(datas, list(data))
   }
 
   
   membership <- apply(gammas,1,function(x) order(x,decreasing=TRUE)[1])
   res <- list(pars=theta, thetas=thetas , gammas=gammas, member=membership,
-              members=members, k=k, D=D, data=y, E=E,
+              members=members, k=k, D=D, data=data, E=E,
               prob=rbind(colMeans(gammas)),
               iter=iter,
               models=models,      
@@ -144,7 +143,6 @@ mvnmix <- function(y, k=2, theta, steps=500,
   res$theta <- rbind(theta)
   res$parpos <- parpos
   res$opt <- list(estimate=theta)
-  browser()
   res$vcov <- solve(information(res))   
   return(res)
 }
@@ -201,7 +199,7 @@ plot.mvn.mixture <- function(x, label=2,iter,col,alpha=0.5,nonpar=TRUE,...) {
     }
   }
   if (D==2) {
-    require(ellipse)
+    if (!require(ellipse)) stop("ellipse required")
     plot(y, type="n", ...)
 
     for (i in 1:x$k) {
