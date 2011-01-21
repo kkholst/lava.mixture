@@ -13,8 +13,8 @@
 \tabular{ll}{
 Package: \tab lava.mixture \cr
 Type: \tab Package \cr
-Version: \tab 0.2-0 \cr
-Date: \tab 2011-01-11 \cr
+Version: \tab 0.2-1 \cr
+Date: \tab 2011-01-21 \cr
 License: \tab GPL-3 \cr
 LazyLoad: \tab yes \cr
 }

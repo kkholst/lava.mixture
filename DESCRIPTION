@@ -1,13 +1,13 @@
 Package: lava.mixture
 Type: Package
 Title: Mixtures of Linear Latent Variable Models
-Version: 0.2-0
-Date: 2011-01-11
+Version: 0.2-1
+Date: 2011-01-21
 Author: Klaus K. Holst
 Maintainer: Klaus K. Holst <kkho@biostat.ku.dk>
 Description: Estimates mixtures of LVM's via the EM-algorithm
 Keywords: mixture models , latent variable model, EM algorithm
-Depends: R (>= 2.9.0), graph, lava (>= 0.9-6), mvtnorm
+Depends: R (>= 2.8.0), graph, lava (>= 0.9-15), mvtnorm
 Suggests: rgl, ellipse
 License: GPL-3
 LazyLoad: yes
