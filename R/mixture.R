@@ -493,6 +493,7 @@ plot.lvm.mixture <- function(x,...) {
 coef.lvm.mixture <- function(object,iter,list=FALSE,full=FALSE,prob=FALSE,class=FALSE,...) {
   N <- nrow(object$theta)
   res <- object$theta
+  if (class) return(object$gammas)
   if (list) {
     res <- list()
     for (i in 1:object$k) 
