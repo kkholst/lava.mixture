@@ -6,7 +6,7 @@ Date: 2011-01-21
 Author: Klaus K. Holst
 Maintainer: Klaus K. Holst <kkho@biostat.ku.dk>
 Description: Estimates mixtures of LVM's via the EM-algorithm
-Keywords: mixture models , latent variable model, EM algorithm
+Keywords: mixture models, latent variable model, EM algorithm
 Depends: R (>= 2.8.0), graph, lava (>= 0.9-15), mvtnorm
 Suggests: rgl, ellipse
 License: GPL-3
