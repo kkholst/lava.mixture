@@ -1,5 +1,6 @@
-'.onLoad' <- function(lib, pkg="lava.mixture") {
+'.onAttach' <- function(lib, pkg="lava.mixture") {
   desc <- utils::packageDescription(pkg)
-  cat("Loading '", desc$Package, "' package...\n", sep="")
-  cat("Version    : ", desc$Version, "\n", sep="")
+  packageStartupMessage("\nLoading '", desc$Package, "' package...\n",
+                          "Version    : ", desc$Version, "\n",
+                          "Overview: help(package=", desc$Package, ")\n"); 
 }
