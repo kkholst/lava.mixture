@@ -114,7 +114,7 @@ mvnmix <- function(data, k=2, theta, steps=500,
   myvars <- colnames(data)
   if (is.null(myvars)) myvars <- colnames(data) <- paste("y",1:NCOL(data),sep="")
   data <- as.data.frame(data)
-  m <- lvm(myvars,silent=TRUE); m <- covariance(m,myvars)
+  m <- lvm(myvars,silent=TRUE); m <- covariance(m,myvars,pairwise=TRUE)
   models <- datas <- c()
   for (i in 1:k) {
     models <- c(models, list(m))
