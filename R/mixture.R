@@ -362,12 +362,19 @@ predict.lvm.mixture <- function(object,x=NULL,p=coef(object,full=TRUE),...) {
     pr <- p[length(p0)+seq(length(p)-length(p0))];
     if (length(pr)<object$k) pr <- c(pr,1-sum(pr))
     myp <- modelPar(object$multigroup,p=pp)$p
+    
+    logff <- sapply(seq(object$k), function(j) (logLik(object$multigroup$lvm[[j]],p=myp[[j]],data=object$data,indiv=TRUE)))
+    logplogff <- t(apply(logff,1, function(y) y+log(pr)))
+    zmax <- apply(logplogff,1,max)
+    logsumpff <- log(rowSums(exp(logplogff-zmax)))+zmax
+    aji <- apply(logplogff,2,function(x) exp(x-logsumpff))
+    gamma <- exp(apply(logplogff,2,function(y) y - logsumpff)) ## Posterior class probabilities    
     M <- 0; V <- 0
     for (i in seq(object$k)) {
         m <- Model(object$multigroup)[[i]]
         P <- predict(m,data=object$data,p=myp[[i]],x=x)
-        M <- M+pr[i]*P
-        V <- V+pr[i]^2*attributes(P)$cond.var
+        M <- M+gamma[,i]*P
+        V <- V+gamma[,i]^2*attributes(P)$cond.var
     }
     structure(M,cond.var=V)
 }
@@ -399,7 +406,7 @@ score.lvm.mixture <- function(x,theta=c(p,prob),p=coef(x),prob,indiv=FALSE,...) 
     prob <- coef(x,prob=TRUE)
   if (length(prob)<x$k)
     prob <- c(prob,1-sum(prob))
-  logff <- sapply(1:x$k, function(j) (logLik(x$multigroup$lvm[[j]],p=myp[[j]],data=x$data,indiv=TRUE)))
+  logff <- sapply(seq(x$k), function(j) (logLik(x$multigroup$lvm[[j]],p=myp[[j]],data=x$data,indiv=TRUE)))
   logplogff <- t(apply(logff,1, function(y) y+log(prob)))
   zmax <- apply(logplogff,1,max)
   logsumpff <- log(rowSums(exp(logplogff-zmax)))+zmax
