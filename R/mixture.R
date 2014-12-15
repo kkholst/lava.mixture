@@ -1,3 +1,7 @@
+frobnorm <- function(x,y=0,...) {
+    sum((x-y)^2)^.5
+}
+
 ###{{{ mixture
 
 mixture <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM","SEM"),...) {    
@@ -207,8 +211,8 @@ mixture <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM",
         sigma <- (t(S)%*%S)[1]^0.5
       I0 <- I0+optim$gamma2*(sigma)*diag(nrow(I0))
     }       
-    p.orig + optim$gamma*solve(I0)%*%S
-##   p.orig + solve(I0+optim$lambda*diag(nrow(I0)))%*%S
+    p.orig + optim$gamma*Inverse(I0)%*%S
+##   p.orig + Inverse(I0+optim$lambda*diag(nrow(I0)))%*%S
   }
 
   on.exit(
@@ -216,7 +220,7 @@ mixture <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM",
             member <- apply(gamma,1,which.max)
             res <- list(prob=probs,theta=thetas, objective=vals, gamma=newgamma, k=k, member=member, data=data, parpos=parpos, multigroup=mg, model=mg$lvm, logLik=vals);
             class(res) <- "lvm.mixture"
-            res$vcov <- solve(information.lvm.mixture(res))
+            res$vcov <- Inverse(information.lvm.mixture(res))
             return(res)
           }
           )
@@ -316,7 +320,7 @@ mixture <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM",
           count2 <- count2+1
           ##        aa <- list(thetacur=thetacur, gamma=gamma, mg=mg, optim=optim, constrained=constrained, parpos=parpos, probcur=probcur)
           ##        save(aa, file="aa.rda")
-          ##        thetacur <- thetacur + solve(myInformation(thetacur))%*%(-myGrad(thetacur))
+          ##        thetacur <- thetacur + Inverse(myInformation(thetacur))%*%(-myGrad(thetacur))
           oldpar <- thetacur
           ##        print(thetacur)
           thetacur <- Scoring(thetacur)
@@ -337,6 +341,36 @@ mixture <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM",
 }
 
 ###}}} mixture
+
+
+model.frame.lvm.mixture <- function(formula,...) {
+    return(formula$data)
+}
+
+iid.lvm.mixture <- function(x,...) {
+    bread <- vcov(x)
+    structure(t(bread%*%t(score(x,indiv=TRUE))),bread=bread)
+}
+
+manifest.lvm.mixture <- function(x,...) {
+    manifest(x$multigroup,...)
+}
+
+predict.lvm.mixture <- function(object,x=NULL,p=coef(object,full=TRUE),...) {
+    p0 <- coef(object)
+    pp <- p[seq_along(p0)]
+    pr <- p[length(p0)+seq(length(p)-length(p0))];
+    if (length(pr)<object$k) pr <- c(pr,1-sum(pr))
+    myp <- modelPar(object$multigroup,p=pp)$p
+    M <- 0; V <- 0
+    for (i in seq(object$k)) {
+        m <- Model(object$multigroup)[[i]]
+        P <- predict(m,data=object$data,p=myp[[i]],x=x)
+        M <- M+pr[i]*P
+        V <- V+pr[i]^2*attributes(P)$cond.var
+    }
+    structure(M,cond.var=V)
+}
 
 ###{{{ logLik
 
@@ -482,8 +516,8 @@ print.lvm.mixture <- function(x,...) {
 
 ###{{{ plot
 
-plot.lvm.mixture <- function(x,...) {
-  matplot(x$theta,...)
+plot.lvm.mixture <- function(x,type="l",...) {
+  matplot(x$theta,type=type,...)
 }
 
 ###}}} plot
@@ -495,18 +529,21 @@ coef.lvm.mixture <- function(object,iter,list=FALSE,full=FALSE,prob=FALSE,class=
   res <- object$theta
   if (class) return(object$gammas)
   if (list) {
-    res <- list()
-    for (i in 1:object$k) 
-      res <- c(res, list(coef(object)[object$parpos[[i]]]))
-    return(res)
+      res <- list()
+      for (i in 1:object$k) 
+          res <- c(res, list(coef(object)[object$parpos[[i]]]))
+      return(res)
   }
+  if (full) {
+      res <- cbind(res,object$prob[,seq(ncol(object$prob)-1)])
+  }   
   if (prob) {
-    res <- object$prob
+      res <- object$prob
   }
   if (missing(iter))
-    return(res[N,])
+      return(res[N,])
   else
-    return(res[iter,])
+      return(res[iter,])
 }
 
 ###}}} coef

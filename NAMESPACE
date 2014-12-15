@@ -5,6 +5,11 @@ export(
        mvnmix
        )
 
+
+S3method(iid, lvm.mixture)
+S3method(predict, lvm.mixture)
+S3method(model.frame, lvm.mixture)
+S3method(manifest, lvm.mixture)
 S3method(coef, lvm.mixture)
 S3method(logLik, lvm.mixture)
 S3method(score, lvm.mixture)
