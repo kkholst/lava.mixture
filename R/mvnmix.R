@@ -30,6 +30,35 @@ getMeanVar <- function(object,k,iter,...) {
     return(res[[k]])  
 }
 
+##' Estimate mixture latent variable model
+##'
+##' Estimate parameters in a mixture of latent variable models via the EM algorithm.
+##' @title Estimate mixture latent variable model
+##' @param data \code{data.frame}
+##' @param k Number of mixture components
+##' @param theta Optional starting values
+##' @param steps Maximum number of iterations
+##' @param tol Convergence tolerance of EM algorithm
+##' @param lambda Added to diagonal of covariance matrix (to avoid singularities)
+##' @param mu Initial centres (if unspecified random centres will be chosen)
+##' @param silent Turn on/off output messages
+##' @param extra Extra debug information
+##' @param ... Additional arguments parsed to lower-level functions
+##' @return A \code{mixture} object 
+##' @author Klaus K. Holst
+##' @seealso \code{mixture}
+##' @keywords models, regression
+##' @export
+##' @examples
+##' data(faithful)
+##' set.seed(1)
+##' M1 <- mvnmix(faithful[,"waiting",drop=FALSE],k=2)
+##' M2 <- mvnmix(faithful,k=2)
+##' if (interactive()) {
+##'     par(mfrow=c(2,1))
+##'     plot(M1,col=c("orange","blue"),ylim=c(0,0.05))
+##'     plot(M2,col=c("orange","blue"))
+##' }
 mvnmix <- function(data, k=2, theta, steps=500,
                  tol=1e-16, lambda=0,
                  mu=NULL,
@@ -69,8 +98,8 @@ mvnmix <- function(data, k=2, theta, steps=500,
     ## E(expectation step)
     phis <- c()
     for (j in 1:k) {
-      C <- matrix(Sigmas[j,],ncol=D); diag(C) <- diag(C)+lambda ## Assure C is not singular
-      phis <- cbind(phis, dmvnorm(data,mus[j,],C))
+        C <- matrix(Sigmas[j,],ncol=D); diag(C) <- diag(C)+lambda ## Assure C is not singular
+        phis <- cbind(phis, lava::dmvn(data,mus[j,],C))
     }
     gammas <- c()
     denom <- t(ps%*%t(phis))
@@ -121,7 +150,6 @@ mvnmix <- function(data, k=2, theta, steps=500,
     datas <- c(datas, list(data))
   }
 
-  
   membership <- apply(gammas,1,function(x) order(x,decreasing=TRUE)[1])
   res <- list(pars=theta, thetas=thetas , gammas=gammas, member=membership,
               members=members, k=k, D=D, data=data, E=E,
@@ -147,6 +175,8 @@ mvnmix <- function(data, k=2, theta, steps=500,
   return(res)
 }
 
+
+##' @export
 print.mvn.mixture <- function(x,...) {
   par <- toPar(x$pars,x$D,x$k)
   space <- paste(rep(" ",12),collapse="")
@@ -163,6 +193,7 @@ print.mvn.mixture <- function(x,...) {
   invisible(par)
 }
 
+##' @export
 plot.mvn.mixture <- function(x, label=2,iter,col,alpha=0.5,nonpar=TRUE,...) {
   opts <- list(...)
   ##  cols <- opts$col; if(is.null(cols)) cols <- 1:gmfit$k
@@ -199,11 +230,11 @@ plot.mvn.mixture <- function(x, label=2,iter,col,alpha=0.5,nonpar=TRUE,...) {
     }
   }
   if (D==2) {
-    if (!require(ellipse)) stop("ellipse required")
+      if (!requireNamespace("ellipse")) stop("ellipse required")
     plot(y, type="n", ...)
 
     for (i in 1:x$k) {
-      C1 <- with(pp[[i]], ellipse(var, centre=mean))
+      C1 <- with(pp[[i]], ellipse::ellipse(var, centre=mean))
       lines(C1, col=col[i], lwd=lwd)      
     }
     
@@ -222,13 +253,13 @@ plot.mvn.mixture <- function(x, label=2,iter,col,alpha=0.5,nonpar=TRUE,...) {
       points(y, cex=cex)
   }
   if (D==3) {    
-    if (!require(rgl)) stop("rgl required")
-    plot3d(y, type="n", box=FALSE)
+    if (!requireNamespace("rgl")) stop("rgl required")
+    rgl::plot3d(y, type="n", box=FALSE)
     for (i in 1:x$k) {
-      pot <- y[which(x$member==i),]
-      plot3d(pot, type="s", radius=0.1, col=col[i], add=TRUE)
-      ee <- ellipse3d(pp[[i]]$var,centre=pp[[i]]$mean)
-      plot3d(ee, col=col[i], alpha=alpha, add = TRUE)      
+        pot <- y[which(x$member==i),]
+        rgl::plot3d(pot, type="s", radius=0.1, col=col[i], add=TRUE)
+        ee <- rgl::ellipse3d(pp[[i]]$var,centre=pp[[i]]$mean)
+        rgl::plot3d(ee, col=col[i], alpha=alpha, add = TRUE)      
     }
   }  
 }
