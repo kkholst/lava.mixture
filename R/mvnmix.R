@@ -30,40 +30,49 @@ getMeanVar <- function(object,k,iter,...) {
     return(res[[k]])  
 }
 
-##' Estimate mixture latent variable model
-##'
-##' Estimate parameters in a mixture of latent variable models via the EM algorithm.
-##' @title Estimate mixture latent variable model
-##' @param data \code{data.frame}
-##' @param k Number of mixture components
-##' @param theta Optional starting values
-##' @param steps Maximum number of iterations
-##' @param tol Convergence tolerance of EM algorithm
-##' @param lambda Added to diagonal of covariance matrix (to avoid singularities)
-##' @param mu Initial centres (if unspecified random centres will be chosen)
-##' @param silent Turn on/off output messages
-##' @param extra Extra debug information
-##' @param ... Additional arguments parsed to lower-level functions
-##' @return A \code{mixture} object 
-##' @author Klaus K. Holst
-##' @seealso \code{mixture}
-##' @keywords models, regression
-##' @export
-##' @examples
-##' data(faithful)
-##' set.seed(1)
-##' M1 <- mvnmix(faithful[,"waiting",drop=FALSE],k=2)
-##' M2 <- mvnmix(faithful,k=2)
-##' if (interactive()) {
-##'     par(mfrow=c(2,1))
-##'     plot(M1,col=c("orange","blue"),ylim=c(0,0.05))
-##'     plot(M2,col=c("orange","blue"))
-##' }
+
+
+#' Estimate mixture latent variable model
+#' 
+#' Estimate mixture latent variable model
+#' 
+#' Estimate parameters in a mixture of latent variable models via the EM
+#' algorithm.
+#' 
+#' @param data \code{data.frame}
+#' @param k Number of mixture components
+#' @param theta Optional starting values
+#' @param steps Maximum number of iterations
+#' @param tol Convergence tolerance of EM algorithm
+#' @param lambda Added to diagonal of covariance matrix (to avoid
+#' singularities)
+#' @param mu Initial centres (if unspecified random centres will be chosen)
+#' @param silent Turn on/off output messages
+#' @param extra Extra debug information
+#' @param ... Additional arguments parsed to lower-level functions
+#' @return A \code{mixture} object
+#' @author Klaus K. Holst
+#' @seealso \code{mixture}
+#' @keywords models, regression
+#' @examples
+#' 
+#' data(faithful)
+#' set.seed(1)
+#' M1 <- mvnmix(faithful[,"waiting",drop=FALSE],k=2)
+#' M2 <- mvnmix(faithful,k=2)
+#' if (interactive()) {
+#'     par(mfrow=c(2,1))
+#'     plot(M1,col=c("orange","blue"),ylim=c(0,0.05))
+#'     plot(M2,col=c("orange","blue"))
+#' }
+#' 
+#' @export mvnmix
 mvnmix <- function(data, k=2, theta, steps=500,
                  tol=1e-16, lambda=0,
                  mu=NULL,
                  silent=TRUE, extra=FALSE, ...
                  )  {
+
   if (k<2) stop("Only one cluster")
   ## theta = (mu1, ..., muk, Sigma1, ..., Sigmak, p1, ..., p[k-1])
   if (is.vector(data)) data <- matrix(data,ncol=1)
@@ -73,6 +82,7 @@ mvnmix <- function(data, k=2, theta, steps=500,
   n <- nrow(data)
   D <- ncol(data)
   yunique <- unique(data)
+
   if (missing(theta)) {
     mus <- c()
     if (!is.null(mu)) {
@@ -85,11 +95,11 @@ mvnmix <- function(data, k=2, theta, steps=500,
     ps <- rep(1/k,k-1)
     theta <- c(mus,Sigmas,ps)
   }
+
   theta0 <- theta
   if (!silent)
     cat(i,":\t", paste(formatC(theta0),collapse=" "),"\n")
   thetas <- members <- c()
-  
   while ((i<steps) & (E>=tol)) {
     if (extra)
       thetas <- rbind(thetas, theta)
@@ -171,7 +181,7 @@ mvnmix <- function(data, k=2, theta, steps=500,
   res$theta <- rbind(theta)
   res$parpos <- parpos
   res$opt <- list(estimate=theta)
-  res$vcov <- solve(information(res))   
+  res$vcov <- solve(information(res,type="E"))   
   return(res)
 }
 

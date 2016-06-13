@@ -7,8 +7,16 @@ Author: Klaus K. Holst
 Maintainer: Klaus K. Holst <kkho@biostat.ku.dk>
 Description: Estimate mixtures of Latent Variable Models via the EM-algorithm.
 Keywords: mixture models, latent variable model, EM algorithm
-Depends: R (>= 2.8.0), lava (>= 1.4), mets (>= 1.0)
-Imports: SQUAREM
-Suggests: rgl, ellipse
+Depends:
+    R (>= 2.15),
+    lava (>= 1.4),
+    mets (>= 1.0)
+Imports:
+    turboEM,ucminf,numDeriv
+Suggests:
+    rgl,ellipse
 License: GPL-3
 LazyLoad: yes
+URL: https://github.com/kkholst/lava.mixture
+Roxygen: list(wrap = FALSE)
+RoxygenNote: 5.0.1

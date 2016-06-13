@@ -1,71 +1,81 @@
-frobnorm <- function(x,y=0,...) {
-    sum((x-y)^2)^.5
-}
-
 ###{{{ mixture
 
-##' Estimate mixture latent variable model
-##'
-##' Estimate parameters in a mixture of latent variable models via the EM algorithm.
-##' @title Estimate mixture latent variable model.
-##' @param x List of \code{lvm} objects. If only a single \code{lvm}
-##' object is given, then a \code{k}-mixture of this model is fitted
-##' (free parameters varying between mixture components).
-##' @param data \code{data.frame}
-##' @param k Number of mixture components
-##' @param control Optimization parameters (see details)
-##' @param type Type of EM algorithm (standard, classification, stochastic)
-##' @param ... Additional arguments parsed to lower-level functions
-##' @author Klaus K. Holst
-##' @details
-##' The performance of the EM algorithm can be tuned via the \code{control}
-##' argument, a list where a subset of the following members can be altered:
-##' 
-##' \describe{
-##' \item{start}{Optional starting values}
-##' \item{nstart}{Evaluate \code{nstart} different starting values and run the
-##'  EM-algorithm on the parameters with largest likelihood}
-##' \item{tol}{Convergence tolerance of the EM-algorithm.  The algorithm is
-##'  stopped when the absolute change in likelihood and parameter (2-norm)
-##'  between successive iterations is less than \code{tol}}
-##' \item{iter.max}{Maximum number of iterations of the EM-algorithm}
-##' \item{gamma}{Scale-down (i.e. number between 0 and 1) of the step-size
-##'  of the Newton-Raphson algorithm in the M-step}
-##' \item{trace}{Trace information on the EM-algorithm is printed on every
-##' \code{trace}th iteration}
-##'}
-##'
-##' Note that the algorithm can be aborted any time (C-c) and still be saved
-##' (via on.exit call).
-##' @seealso \code{mvnmix}
-##' @keywords models, regression
-##' @export
-##' @examples
-##' \donttest{
-##' set.seed(1)
-##' m0 <- lvm(list(y~x+z,x~z))
-##' distribution(m0,~z) <- binomial.lvm()
-##' d <- sim(m0,500,p=c("y<-z"=2,"y<-x"=1))
-##' 
-##' ## unmeasured confounder example
-##' m <- baptize(lvm(y~x));
-##' covariance(m,~x) <- "v"
-##' intercept(m,~x+y) <- NA
-##' 
-##' M <- mixture(m,k=2,data=d,control=list(trace=1,tol=1e-6))
-##' summary(M)
-##' lm(y~x,d)
-##' ## True slope := 1
-##' }
-mixture <- function(x, data, k=length(x), control=list(), type=c("standard","CEM","SEM"),...) {    
+
+#' Estimate mixture latent variable model.
+#' 
+#' Estimate mixture latent variable model
+#' 
+#' Estimate parameters in a mixture of latent variable models via the EM
+#' algorithm.
+#' 
+#' The performance of the EM algorithm can be tuned via the \code{control}
+#' argument, a list where a subset of the following members can be altered:
+#' 
+#' \describe{ \item{start}{Optional starting values} \item{nstart}{Evaluate
+#' \code{nstart} different starting values and run the EM-algorithm on the
+#' parameters with largest likelihood} \item{tol}{Convergence tolerance of the
+#' EM-algorithm.  The algorithm is stopped when the absolute change in
+#' likelihood and parameter (2-norm) between successive iterations is less than
+#' \code{tol}} \item{iter.max}{Maximum number of iterations of the
+#' EM-algorithm} \item{gamma}{Scale-down (i.e. number between 0 and 1) of the
+#' step-size of the Newton-Raphson algorithm in the M-step} \item{trace}{Trace
+#' information on the EM-algorithm is printed on every \code{trace}th
+#' iteration} }
+#' 
+#' Note that the algorithm can be aborted any time (C-c) and still be saved
+#' (via on.exit call).
+#' 
+#' @param x List of \code{lvm} objects. If only a single \code{lvm} object is
+#' given, then a \code{k}-mixture of this model is fitted (free parameters
+#' varying between mixture components).
+#' @param data \code{data.frame}
+#' @param k Number of mixture components
+#' @param control Optimization parameters (see details)
+#' @param type Type of EM algorithm (standard, classification, stochastic)
+#' @param vcov of asymptotic covariance matrix (NULL to omit)
+#' @param ... Additional arguments parsed to lower-level functions
+#' @author Klaus K. Holst
+#' @seealso \code{mvnmix}
+#' @keywords models, regression
+#' @examples
+#' 
+#' \donttest{
+#' set.seed(1)
+#' m0 <- lvm(list(y~x+z,x~z))
+#' distribution(m0,~z) <- binomial.lvm()
+#' d <- sim(m0,500,p=c("y<-z"=2,"y<-x"=1))
+#' 
+#' ## unmeasured confounder example
+#' m <- baptize(lvm(y~x));
+#' covariance(m,~x) <- "v"
+#' intercept(m,~x+y) <- NA
+#' 
+#' M <- mixture(m,k=2,data=d,control=list(trace=1,tol=1e-6))
+#' summary(M)
+#' lm(y~x,d)
+#' ## True slope := 1
+#' }
+#' 
+#' @export mixture
+mixture <- function(x, data, k=length(x),
+                    control=list(),
+                    type=c("standard","CEM","SEM"),
+                    vcov="observed",
+                    ...) {    
     MODEL <- "normal"    
     type <- tolower(type[1])
     if (type[1]!="standard") {
         return(mixture0(x,data=data,k=k,control=control,type=type,...))
     }   
 
-
-    optim <- list(start=NULL,
+    optim <- list(K=2,
+                  square=TRUE,
+                  step.max0=1,
+                  step.min0=1,
+                  mstep=4,
+                  kr=1,
+                  objfn.inc=2,
+                  start=NULL,                  
                   startbounds=c(-2,2),
                   startmean=FALSE,
                   nstart=1,
@@ -76,7 +86,8 @@ mixture <- function(x, data, k=length(x), control=list(), type=c("standard","CEM
                   lbound=1e-9,
                   trace=1,
                   stabil=TRUE,
-                  gamma=1,
+                  rerun=TRUE,
+                  gamma=0.5,
                   gamma2=1,
                   newton=10,
                   lambda=0 # Stabilizing factor (avoid singularities of I)
@@ -86,12 +97,6 @@ mixture <- function(x, data, k=length(x), control=list(), type=c("standard","CEM
     if (!missing(control))
         optim[names(control)] <- control
     if ("iter.max"%in%names(optim)) optim$maxiter <- optim$iter.max
-
-    sqem.idx <- match(c("K","method","square","step.min0","step.max0","mstep",
-                            "objfn.inc","kr","tol","maxiter","trace"),
-                          names(optim)) 
-    sqem.control <- optim[na.omit(sqem.idx)]
-
         
     if (k==1) {
         if (is.list(x))
@@ -105,11 +110,11 @@ mixture <- function(x, data, k=length(x), control=list(), type=c("standard","CEM
         x <- rep(list(x),k)
     }  
 
-    
+
     mg <- multigroup(x,rep(list(data),k),fix=FALSE)
     ## Bounds on variance parameters
-    npar <- with(mg, npar+npar.mean)
-    parpos <- modelPar(mg,1:npar)$p  
+    Npar <- with(mg, npar+npar.mean)
+    ParPos <- modelPar(mg,1:Npar)$p  
     lower <- rep(-Inf, mg$npar);
     offdiagpos <- c()
     varpos <- c()
@@ -125,23 +130,23 @@ mixture <- function(x, data, k=length(x), control=list(), type=c("standard","CEM
     constrained <- which(is.finite(lower))
     if (!any(constrained)) optim$constrain <- FALSE
 
-    mymodel <- list(multigroup=mg,k=k,data=data); class(mymodel) <- "lvm.mixture"
+    mymodel <- list(multigroup=mg,k=k,data=data,parpos=ParPos); class(mymodel) <- "lvm.mixture"
 
     if (is.null(optim$start)) {
         constrLogLikS <- function(p) {      
             if (optim$constrain) {
                 p[constrained] <- exp(p[constrained])
             }
-            -logLik(mymodel,p=p,rep(1/k,k))
+            -logLik(mymodel,c(p=p,rep(1/k,k-1)))
         }
 
-        start <- runif(npar,optim$startbounds[1],optim$startbounds[2]);
+        start <- runif(Npar,optim$startbounds[1],optim$startbounds[2]);
         if (length(offdiagpos)>0)
             start[mg$npar.mean + offdiagpos] <- 0
         if (optim$nstart>1) {
             myll <- constrLogLikS(start)
             for (i in 1:optim$nstart) {
-                newstart <- runif(npar,optim$startbounds[1],optim$startbounds[2]);
+                newstart <- runif(Npar,optim$startbounds[1],optim$startbounds[2]);
                 newmyll <- constrLogLikS(newstart)
                 if (newmyll<myll) {
                     start <- newstart
@@ -153,7 +158,7 @@ mixture <- function(x, data, k=length(x), control=list(), type=c("standard","CEM
     
     if (is.null(optim$prob))
         optim$prob <- rep(1/k,k-1)
-    thetacur <- optim$start
+    thetacur <- optim$start    
     probcur <- with(optim, c(prob,1-sum(prob)))
     probs <- rbind(probcur);
 
@@ -165,7 +170,7 @@ mixture <- function(x, data, k=length(x), control=list(), type=c("standard","CEM
     gamma <- t(rmultinom(nrow(data),1,probs))
     newgamma <- gamma
     ##  gammas <- list()
-    curloglik <- logLik(mymodel,p=thetacur,prob=probcur,model=MODEL)
+    curloglik <- logLik(mymodel,p=c(thetacur,probcur[-length(probcur)]),model=MODEL)
     vals <- c(curloglik)
     i <- count <- 0
     member <- rep(1,nrow(data))
@@ -179,74 +184,50 @@ mixture <- function(x, data, k=length(x), control=list(), type=c("standard","CEM
     ##   logLik(mymodel,p=p,prob=prob)
     ## }
     ## EM algorithm:
-    myObj <- function(p) {
+    PosteriorProb <- function(pp,priorprob) {
+        if (!is.list(pp)) {
+            if (optim$constrain) {
+                pp[constrained] <- exp(pp[constrained])
+            }
+            if (missing(priorprob)) priorprob <- pp[seq(Npar+1,length(pp))]
+            pp <- lapply(ParPos,function(x) p[x])
+        }
+        k <- length(pp)
+        logff <- sapply(seq(k), function(j) (logLik(mg$lvm[[j]],p=pp[[j]],data=data,indiv=TRUE,model=MODEL)))
+        logplogff <- t(apply(logff,1, function(z) z+log(priorprob)))
+        ## Log-sum-exp (see e.g. NR)
+        zmax <- apply(logplogff,1,max)
+        logsumpff <- log(rowSums(exp(logplogff-zmax)))+zmax    
+        gamma <- exp(apply(logplogff,2,function(y) y - logsumpff)) ## Posterior class probabilities
+        return(gamma)
+    }
+    myObj <- function(p,gamma) {
         if (optim$constrain) {
             p[constrained] <- exp(p[constrained])
         }
-        myp <- modelPar(mg,p)$p
-        ##    save(p,file="p.rda")
-        ##      lf <- sapply(1:k, function(i) logLik(mg$lvm[[i]],p=myp[[i]],data=data,indiv=TRUE))
-        ##    print(lf)
-        ##      ff <- exp(lf)
+        myp <- lapply(ParPos,function(x) p[x])
+        if (missing(gamma)) {
+            probcur <- p[seq(Npar+1,length(p))]
+            gamma <- PosteriorProb(myp,probcur)
+        }
         ff <- sapply(1:k, function(j) logLik(mg$lvm[[j]],p=myp[[j]],data=data,indiv=TRUE,model=MODEL))
         return(-sum(gamma*ff))
         ## Previous:
         ##      ff <- sapply(1:k, function(j) exp(logLik(mg$lvm[[j]],p=myp[[j]],data=data,indiv=TRUE,model=MODEL)))
         ##      return(-sum(log(rowSums(gamma*ff))))
     }
-    myGrad <- function(p) {
-        if (optim$constrain) {
-            p[constrained] <- exp(p[constrained])
-        }
-        myp <- modelPar(mg,p)$p
-        D <- lapply(1:k, function(j) gamma[,j]*score(mg$lvm[[j]],p=myp[[j]],data=data,indiv=TRUE,model=MODEL))
-        D0 <- matrix(0,nrow(data),length(p))
-        for (j in 1:k) D0[,parpos[[j]]] <- D0[,parpos[[j]]]+D[[j]]
-        S <- -colSums(D0)
-        if (optim$constrain) {
-            S[constrained] <- S[constrained]*p[constrained]
-        }
-        return(S)
-        ## Previous:
-        ##      ff <- sapply(1:k, function(j) exp(logLik(mg$lvm[[j]],p=myp[[j]],data=data,indiv=TRUE,model=MODEL)))
-        ##      gammaff <- gamma*ff
-        ##      f0 <- rowSums(gammaff)
-        ##      D <- lapply(1:k, function(j) 1/f0*(gammaff)[,j]*score(mg$lvm[[j]],p=myp[[j]],data=data,model=MODEL))
-        ##      D0 <- matrix(0,nrow(data),length(p))
-        ##      for (k in 1:k) D0[,parpos[[k]]] <- D0[,parpos[[k]]]+D[[k]]
-        ##      -colSums(D0)
-    }
-    myInformation <- function(p) {
-        p0 <- p
-        if (optim$constrain) {
-            p[constrained] <- exp(p[constrained])
-        }
-        myp <- modelPar(mg,p)$p    
-        I <- lapply(1:k, function(j) probcur[j]*information(mg$lvm[[j]],p=myp[[j]],n=nrow(data),data=data,model=MODEL))
-        I0 <- matrix(0,length(p),length(p))
-        for (j in 1:k) {
-            I0[parpos[[j]],parpos[[j]]] <- I0[parpos[[j]],parpos[[j]]] + I[[j]]
-        }
-        if (optim$constrain) {
-            I0[constrained,-constrained] <- apply(I0[constrained,-constrained,drop=FALSE],2,function(x) x*p[constrained]);
-            I0[-constrained,constrained] <- t(I0[constrained,-constrained])
-            D <- -myGrad(p0)  
-            if (length(constrained)==1)
-                I0[constrained,constrained] <- I0[constrained,constrained]*outer(p[constrained],p[constrained]) + D[constrained]
-            else
-                I0[constrained,constrained] <- I0[constrained,constrained]*outer(p[constrained],p[constrained]) + diag(D[constrained])
-        }
-        return(I0)
-    }
+
+
     Scoring <- function(p,gamma) {
         p.orig <- p
         if (optim$constrain) {
             p[constrained] <- exp(p[constrained])
         }
-        myp <- modelPar(mg,p)$p
-        D <- lapply(1:k, function(j) gamma[,j]*score(mg$lvm[[j]],p=myp[[j]],data=data,indiv=TRUE,model=MODEL))
+        probcur <- colMeans(gamma)
+        myp <- lapply(ParPos,function(x) p[x])
+        D <- lapply(seq_along(myp), function(j) gamma[,j]*score(mg$lvm[[j]],p=myp[[j]],data=data,indiv=TRUE,model=MODEL))
         D0 <- matrix(0,nrow(data),length(p))
-        for (j in 1:k) D0[,parpos[[j]]] <- D0[,parpos[[j]]]+D[[j]]
+        for (j in 1:k) D0[,ParPos[[j]]] <- D0[,ParPos[[j]]]+D[[j]]
         S <- colSums(D0)
         if (optim$constrain) {
             S[constrained] <- S[constrained]*p[constrained]
@@ -255,7 +236,7 @@ mixture <- function(x, data, k=length(x), control=list(), type=c("standard","CEM
                                                             ))
         I0 <- matrix(0,length(p),length(p))
         for (j in 1:k) {
-            I0[parpos[[j]],parpos[[j]]] <- I0[parpos[[j]],parpos[[j]]] + I[[j]]
+            I0[ParPos[[j]],ParPos[[j]]] <- I0[ParPos[[j]],ParPos[[j]]] + I[[j]]
         }
         if (optim$constrain) {
             I0[constrained,-constrained] <- apply(I0[constrained,-constrained,drop=FALSE],2,function(x) x*p[constrained]);
@@ -274,7 +255,7 @@ mixture <- function(x, data, k=length(x), control=list(), type=c("standard","CEM
                 sigma <- (t(S)%*%S)[1]^0.5
             I0 <- I0+optim$gamma2*(sigma)*diag(nrow(I0))
         }       
-        p.orig + optim$gamma*Inverse(I0)%*%S
+        p.orig + as.vector(optim$gamma*Inverse(I0)%*%S)
         ##   p.orig + Inverse(I0+optim$lambda*diag(nrow(I0)))%*%S
     }
     ## env <- new.env()
@@ -294,19 +275,20 @@ mixture <- function(x, data, k=length(x), control=list(), type=c("standard","CEM
 
     p <- c(thetacur,probcur)
     EMstep <- function(p,all=FALSE) {        
-        thetacur <- p[seq_along(thetacur)]
+        thetacur <- p[seq(Npar)]
         thetacur0 <- thetacur
         if (optim$constrain) {
             thetacur0[constrained] <- exp(thetacur[constrained])
         }
         probcur <- p[seq(length(thetacur)+1,length(p))]
-        pp <- modelPar(mg,thetacur0)$p
+        pp <- lapply(ParPos,function(x) thetacur0[x])
         logff <- sapply(1:k, function(j) (logLik(mg$lvm[[j]],p=pp[[j]],data=data,indiv=TRUE,model=MODEL)))
         logplogff <- t(apply(logff,1, function(z) z+log(probcur)))
         ## Log-sum-exp (see e.g. NR)
         zmax <- apply(logplogff,1,max)
-        logsumpff <- log(rowSums(exp(logplogff-zmax)))+zmax    
+        logsumpff <- log(rowSums(exp(logplogff-zmax)))+zmax  
         gamma <- exp(apply(logplogff,2,function(y) y - logsumpff)) ## Posterior class probabilities
+        ##gamma <- PosteriorProb(p)
         ## M-step:
         ##cat("thetacur=",thetacur,"\n")
         ##cat("probcur=",probcur,"\n")
@@ -327,20 +309,55 @@ mixture <- function(x, data, k=length(x), control=list(), type=c("standard","CEM
         }
         return(p)
     }
-    opt <- squarem(p,fixptfn=EMstep,control=sqem.control)
+
+    ## p0 <- p
+    ## for (i in 1:100) {
+    ##     message(p0)
+    ##     p0 <- EMstep(p0)
+    ## }
+    sqem.idx <- match(c("K","method","square","step.min0","step.max0","mstep",
+                            "objfn.inc","kr","tol","maxiter","trace"),
+                          names(optim)) 
+    em.control <- optim[na.omit(sqem.idx)]
+    
+    control.run <- list(keep.objfval=TRUE,
+                        convtype= "parameter",
+                        ##nvtype = "objfn",
+                        maxiter=500,tol=1e-5,trace=1)
+
+    opt <- turboEM::turboem(p,fixptfn=EMstep,
+                            objfn=myObj,
+                            method="squarem",
+                            ##method = c("em","squarem","pem","decme","qn")
+                            control.method=list(em.control),
+                            control.run=control.run)
+    
+    if (optim$rerun) {
+        opt <- tryCatch(ucminf(opt$par,myObj),error=function(x) opt)
+    }
+    
+    ##opt <- SQUAREM::squarem(p,fixptfn=EMstep,objfn=myObj,control=em.control)
+    ## opt <- SQUAREM::fpiter(p,fixptfn=EMstep,control=list(maxiter=100,trace=1))
+    
     val <- EMstep(opt$par,all=TRUE)
     val <- c(val, list(member=apply(val$gamma,1,which.max),
                        k=k,
                        data=data,
-                       parpos=parpos,
+                       parpos=ParPos,
                        multigroup=mg,
                        model=mg$lvm,
-                       logLik=NA))
+                       logLik=NA,
+                       opt=opt))
     class(val) <- "lvm.mixture"
-    val$vcov <- Inverse(information.lvm.mixture(val))
+    if (is.null(vcov)) {
+        np <- length(coef(val))
+        val$vcov <- matrix(NA,np,np)
+    } else {
+        val$vcov <- Inverse(information.lvm.mixture(val,type=vcov))
+    }
     return(val)
 }
- 
+
 ###}}} mixture
 
 ##' @export
@@ -366,7 +383,6 @@ predict.lvm.mixture <- function(object,x=NULL,p=coef(object,full=TRUE),...) {
     pr <- p[length(p0)+seq(length(p)-length(p0))];
     if (length(pr)<object$k) pr <- c(pr,1-sum(pr))
     myp <- modelPar(object$multigroup,p=pp)$p
-    
     logff <- sapply(seq(object$k), function(j) (logLik(object$multigroup$lvm[[j]],p=myp[[j]],data=object$data,indiv=TRUE)))
     logplogff <- t(apply(logff,1, function(y) y+log(pr)))
     zmax <- apply(logplogff,1,max)
@@ -386,32 +402,18 @@ predict.lvm.mixture <- function(object,x=NULL,p=coef(object,full=TRUE),...) {
 
 ###{{{ logLik
 
-ll  <- function(object,p=coef(object),prob,model="normal") {
-  myp <- modelPar(object$multigroup,p)$p
-  ff <- sapply(1:object$k, function(j) exp(logLik(object$multigroup$lvm[[j]],p=myp[[j]],data=object$data,indiv=TRUE,model=model)))
-  if (missing(prob))
-    prob <- coef(object,prob=TRUE)
-  ##  gamma <- tail(object$gamma,1)[[1]]
-  ##  sum(log(colSums((prob*t(ff*gamma)))))
-  ##  sum(log(colSums((prob*t(ff)))))
-  loglik <- sum(log(colSums((prob*t(ff)))))
-  npar <- length(prob)-1 + length(p)
-  nobs <- nrow(object$data)
-  attr(loglik, "nall") <- nobs
-  attr(loglik, "nobs") <- nobs-npar
-  attr(loglik, "df") <- npar
-  class(loglik) <- "logLik"  
-  return(loglik)
-}
-
 ##' @export
-score.lvm.mixture <- function(x,theta=c(p,prob),p=coef(x),prob,indiv=FALSE,model="normal",...) {
-  myp <- modelPar(x$multigroup,p)$p
-  if (missing(prob))
-    prob <- coef(x,prob=TRUE)
+score.lvm.mixture <- function(x,p=coef(x,full=TRUE),prob,indiv=FALSE,model="normal",...) {
+  myp <- lapply(x$parpos,function(x) p[x])
+  if (missing(prob)) {
+      prob <- tail(p,x$k-1)
+      p <- p[seq_len(length(p)-x$k+1)]
+  }
+  ## if (missing(prob))
+  ##   prob <- coef(x,prob=TRUE)
   if (length(prob)<x$k)
-    prob <- c(prob,1-sum(prob))
-  logff <- sapply(seq(x$k), function(j) (logLik(x$multigroup$lvm[[j]],p=myp[[j]],data=x$data,indiv=TRUE)))
+      prob <- c(prob,1-sum(prob))
+  logff <- sapply(seq(x$k), function(j) (logLik(x$multigroup$lvm[[j]],p=myp[[j]],data=x$data,indiv=TRUE,model=model)))
   logplogff <- t(apply(logff,1, function(y) y+log(prob)))
   zmax <- apply(logplogff,1,max)
   logsumpff <- log(rowSums(exp(logplogff-zmax)))+zmax
@@ -434,20 +436,26 @@ score.lvm.mixture <- function(x,theta=c(p,prob),p=coef(x),prob,indiv=FALSE,model
 }
 
 ##' @export
-information.lvm.mixture <- function(x,...) {
-  S <- score.lvm.mixture(x,indiv=TRUE,...)
-  res <- t(S)%*%S
-  attributes(res)$grad <- colSums(S)
-  return(res)
+information.lvm.mixture <- function(x,p=coef(x,full=TRUE),...,type="observed") {
+    if (tolower(type)%in%c("obs","observed","hessian")) {
+        S <- function(p=p,...) score.lvm.mixture(x,p=p,indiv=FALSE,...)
+        I <- -numDeriv::jacobian(S,p)
+        return(I)
+    } 
+    S <- score.lvm.mixture(x,p=p,indiv=TRUE,...)
+    res <- t(S)%*%S
+    attributes(res)$grad <- colSums(S)
+    return(res)
 }
 
 ##' @export
-logLik.lvm.mixture <- function(object,theta=c(p,prob),p=coef(object),prob,model="normal",...) {
-  myp <- modelPar(object$multigroup,p)$p
+logLik.lvm.mixture <- function(object,p=coef(object,full=TRUE),prob,model="normal",...) {
+  myp <- lapply(object$parpos, function(x) p[x])
   if (missing(prob))
-    prob <- coef(object,prob=TRUE)
+    prob <- tail(p,object$k-1)
   if (length(prob)<object$k)
       prob <- c(prob,1-sum(prob))
+  browser()
   logff <- sapply(1:object$k, function(j) (logLik(object$multigroup$lvm[[j]],p=myp[[j]],data=object$data,indiv=TRUE,model=model)))
   logplogff <- t(apply(logff,1, function(y) y+log(prob)))
   ## Log-sum-exp (see e.g. NR)
@@ -480,7 +488,7 @@ vcov.lvm.mixture <- function(object,...) {
 summary.lvm.mixture <- function(object,labels=0,...) {
   mm <- object$multigroup$lvm
   p <- coef(object,list=TRUE)
-  p0 <- coef(object)
+  p0 <- coef(object,prob=FALSE)
   myp <- modelPar(object$multigroup,1:length(p0))$p
   coefs <- list()
   ncluster <- c()
@@ -524,7 +532,7 @@ print.lvm.mixture <- function(x,...) {
   for (i in 1:x$k) {
     cat("Cluster ",i," (n=",sum(x$member==i),"):\n",sep="")
     cat(rep("-",50),"\n",sep="")
-    print(coef(x)[x$parpos[[i]]], quote=FALSE)
+    print(coef(x,prob=FALSE)[x$parpos[[i]]], quote=FALSE)
     cat("\n")   
   }
   invisible(par)
@@ -544,24 +552,35 @@ plot.lvm.mixture <- function(x,type="l",...) {
 ###{{{ coef
 
 ##' @export
-coef.lvm.mixture <- function(object,iter,list=FALSE,full=FALSE,prob=FALSE,class=FALSE,...) {
+coef.lvm.mixture <- function(object,iter,list=FALSE,full=TRUE,prob=FALSE,class=FALSE,label=TRUE,...) {
   N <- nrow(object$theta)
   res <- object$theta
+  nn <- attr(parpos(object$multigroup),"name")
+  if (length(ii <- which(is.na(nn)))>0 && label) {
+      nn[ii] <- paste0("p",seq_along(ii))
+  }
+  colnames(res) <- nn
   if (class) return(object$gammas)
-  if (list) {
+  if (list) {      
       res <- list()
-      for (i in 1:object$k) 
-          res <- c(res, list(coef(object)[object$parpos[[i]]]))
+      for (i in 1:object$k) {
+          nn <- coef(object$multigroup$lvm[[i]])
+          cc <- coef(object)[object$parpos[[i]]]
+          names(cc) <- nn
+          res <- c(res, list(cc))
+      }
       return(res)
   }
   if (full) {
-      res <- cbind(res,object$prob[,seq(ncol(object$prob)-1)])
+      pp <- object$prob[,seq(ncol(object$prob)-1),drop=FALSE]
+      colnames(pp) <- paste0("pr",seq(ncol(pp)))
+      res <- cbind(res,pp)
   }   
   if (prob) {
       res <- object$prob
   }
   if (missing(iter))
-      return(res[N,])
+      return(res[N,,drop=TRUE])
   else
       return(res[iter,])
 }
