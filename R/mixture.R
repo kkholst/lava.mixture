@@ -455,7 +455,6 @@ logLik.lvm.mixture <- function(object,p=coef(object,full=TRUE),prob,model="norma
     prob <- tail(p,object$k-1)
   if (length(prob)<object$k)
       prob <- c(prob,1-sum(prob))
-  browser()
   logff <- sapply(1:object$k, function(j) (logLik(object$multigroup$lvm[[j]],p=myp[[j]],data=object$data,indiv=TRUE,model=model)))
   logplogff <- t(apply(logff,1, function(y) y+log(prob)))
   ## Log-sum-exp (see e.g. NR)
