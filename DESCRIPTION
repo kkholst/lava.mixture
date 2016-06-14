@@ -12,7 +12,7 @@ Depends:
     lava (>= 1.4),
     mets (>= 1.0)
 Imports:
-    turboEM,ucminf,numDeriv
+    SQUAREM,ucminf,numDeriv
 Suggests:
     rgl,ellipse
 License: GPL-3

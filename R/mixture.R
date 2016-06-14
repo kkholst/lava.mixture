@@ -1,6 +1,5 @@
 ###{{{ mixture
 
-
 #' Estimate mixture latent variable model.
 #' 
 #' Estimate mixture latent variable model
@@ -69,7 +68,7 @@ mixture <- function(x, data, k=length(x),
     }   
 
     optim <- list(
-        rerun=FALSE,
+        rerun=TRUE,
         ## EM (accelerated):
         K=2,
         square=TRUE,
@@ -78,6 +77,14 @@ mixture <- function(x, data, k=length(x),
         mstep=4,
         kr=1,
         objfn.inc=2,
+
+        keep.objfval=TRUE,
+        convtype= "parameter",
+        ##convtype = "objfn",
+        maxiter=200,
+        tol=1e-5,
+        trace=1,
+  
         ## Starting values:
         start=NULL,                  
         startbounds=c(-2,2),
@@ -89,7 +96,6 @@ mixture <- function(x, data, k=length(x),
         constrain=TRUE,
         stopc=2,
         lbound=1e-9,
-        trace=1,
         stabil=TRUE,
         gamma=0.5,
         gamma2=1,
@@ -155,7 +161,13 @@ mixture <- function(x, data, k=length(x),
                 }
             }
         }##    start <- optim(1:4,constrLogLikS,method="SANN",control=list(maxit=50))
+        start[constrained] <- exp(start[constrained])
         optim$start <- start
+    }
+
+    if (length(optim$start)>Npar) {
+        optim$prob <- optim$start[Npar+seq_len(k-1)]
+        optim$start <- optim$start[seq_len(Npar)]
     }
     
     if (is.null(optim$prob))
@@ -163,21 +175,17 @@ mixture <- function(x, data, k=length(x),
     thetacur <- optim$start    
     probcur <- with(optim, c(prob,1-sum(prob)))
     probs <- rbind(probcur);
-
     thetas <- rbind(thetacur)
+
     ## if (optim$constrain) {
     ##     thetas[constrained] <- exp(thetas[constrained])
     ## }
+    if (optim$constrain) {
+        thetacur[constrained] <- log(thetacur[constrained])
+    }
+
     
-    gamma <- t(rmultinom(nrow(data),1,probs))
-    newgamma <- gamma
     ##  gammas <- list()
-    curloglik <- logLik(mymodel,p=c(thetacur,probcur[-length(probcur)]),model=MODEL)
-    vals <- c(curloglik)
-    i <- count <- 0
-    member <- rep(1,nrow(data))
-    E <- dloglik <- Inf
-    
 
     PosteriorProb <- function(pp,priorprob,constrain=FALSE) {
         if (!is.list(pp)) {
@@ -231,7 +239,6 @@ mixture <- function(x, data, k=length(x),
         ##      return(-sum(log(rowSums(gamma*ff))))
     }
 
-
     Scoring <- function(p,gamma) {
         p.orig <- p
         if (optim$constrain) {
@@ -281,12 +288,7 @@ mixture <- function(x, data, k=length(x),
     ## assign("parpos",parpos,env)
     ## assign("constrained",constrained,env)
 
-
-    if (optim$constrain) {
-        thetacur[constrained] <- log(thetacur[constrained])
-    }
-    p <- c(thetacur,probcur)
-    
+   
     EMstep <- function(p,all=FALSE) {        
         thetacur0 <- thetacur <- p[seq(Npar)]        
         gamma <- PosteriorProb(p,constrain=optim$constrain)
@@ -319,22 +321,28 @@ mixture <- function(x, data, k=length(x),
     ##     p0 <- EMstep(p0)
     ## }
     
-    sqem.idx <- match(c("K","method","square","step.min0","step.max0","mstep",
-                            "objfn.inc","kr","tol","maxiter","trace"),
-                          names(optim)) 
-    em.control <- optim[na.omit(sqem.idx)]    
-    control.run <- list(keep.objfval=TRUE,
-                        convtype= "parameter",
-                        ##convtype = "objfn",
-                        maxiter=500,tol=1e-5,trace=1)
+    ## sqem.idx <- match(c("K","method","square","step.min0","step.max0","mstep",
+    ##                         "objfn.inc","kr","tol","maxiter","trace"),names(optim)) 
+    ## em.control <- optim[na.omit(sqem.idx)]
+    ## run.idx <- match(c("keep.objfval","convtype","maxiter","tol","trace"),names(optim))
+    ## control.run <- optim[na.omit(run.idx)]
 
-    opt <- turboEM::turboem(p,fixptfn=EMstep,
-                            objfn=myObj,
-                            method="squarem",
-                            ##method = c("em","squarem","pem","decme","qn")
-                            control.method=list(em.control),
-                            control.run=control.run)
-    ##opt <- SQUAREM::squarem(p,fixptfn=EMstep,objfn=myObj,control=em.control)
+    em.idx <- match(c("K","method","square","step.min0","step.max0","mstep",
+                      "objfn.inc","kr",
+                      ##"keep.objfval","convtype",
+                      "maxiter","tol","trace"),names(optim))
+    em.control <- optim[na.omit(em.idx)]    
+    if (!is.null(em.control$trace)) em.control$trace <- em.control$trace>0
+    
+    p <- c(thetacur,probcur)
+    ## opt <- turboEM::turboem(p,fixptfn=EMstep,
+    ##                         objfn=myObj,
+    ##                         method="squarem",
+    ##                         ##method = c("em","squarem","pem","decme","qn")
+    ##                         control.method=list(em.control),
+    ##                         control.run=control.run)
+    opt <- SQUAREM::squarem(p,fixptfn=EMstep,objfn=myObj,
+                            control=em.control)
     ## opt <- SQUAREM::fpiter(p,fixptfn=EMstep,control=list(maxiter=100,trace=1))
     
     val <- EMstep(opt$par,all=TRUE)
@@ -370,13 +378,13 @@ mixture <- function(x, data, k=length(x),
 ###{{{ predict
 
 ##' @export
-predict.lvm.mixture <- function(object,x=NULL,p=coef(object,full=TRUE),...) {
+predict.lvm.mixture <- function(object,x=lava::vars(object$model),p=coef(object,full=TRUE),model="normal",...) {
     p0 <- coef(object,full=FALSE)
     pp <- p[seq_along(p0)]
     pr <- p[length(p0)+seq(length(p)-length(p0))];
     if (length(pr)<object$k) pr <- c(pr,1-sum(pr))
     myp <- modelPar(object$multigroup,p=pp)$p
-    logff <- sapply(seq(object$k), function(j) (logLik(object$multigroup$lvm[[j]],p=myp[[j]],data=object$data,indiv=TRUE)))
+    logff <- sapply(seq(object$k), function(j) (logLik(object$multigroup$lvm[[j]],p=myp[[j]],data=object$data,indiv=TRUE,model=model)))
     logplogff <- t(apply(logff,1, function(y) y+log(pr)))
     zmax <- apply(logplogff,1,max)
     logsumpff <- log(rowSums(exp(logplogff-zmax)))+zmax

@@ -12,7 +12,7 @@
 #' @importFrom ucminf ucminf
 #' @importFrom lava iid information score manifest parpos index<-
 #' 	multigroup reindex estimate modelPar variances offdiags
-#' 	Inverse Model pars covariance lvm CoefMat
+#' 	Inverse Model pars covariance lvm CoefMat vars
 #' @importFrom mets scoreMVN loglikMVN 
 #' @importFrom stats vcov coef rmultinom runif logLik na.omit AIC
 #' 	cov nlminb predict density dnorm
