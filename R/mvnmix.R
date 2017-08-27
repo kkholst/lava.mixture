@@ -273,3 +273,8 @@ plot.mvn.mixture <- function(x, label=2,iter,col,alpha=0.5,nonpar=TRUE,...) {
     }
   }  
 }
+
+
+kmeans <- function(x,...) {
+
+}
