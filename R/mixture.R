@@ -70,7 +70,7 @@ mixture <- function(x, data, k=length(x),
     optim <- list(
         rerun=TRUE,
         ## EM (accelerated):
-        K=2,
+        K=2, ## K=1, first order approx, slower but some times more stable
         square=TRUE,
         step.max0=1,
         step.min0=1,
@@ -214,10 +214,6 @@ mixture <- function(x, data, k=length(x),
         }
         myp <- lapply(ParPos,function(x) p[x])
         prob <- p[seq(Npar+1,length(p))]
-        if (any(prob<1e-12)) {
-            prob[prob<1e-12] <- 1e-12
-            prob <- prob/sum(prob)
-        }
 
         logff <- sapply(1:length(myp), function(j) (logLik(mg$lvm[[j]],p=myp[[j]],data=data,indiv=TRUE,model=MODEL)))
         logplogff <- t(apply(logff,1, function(y) y+log(prob)))
@@ -308,7 +304,6 @@ mixture <- function(x, data, k=length(x),
         if (optim$constrain) {
             thetacur0[constrained] <- exp(thetacur[constrained])
         }
-
         p <- c(thetacur,probcur)
         if (all) {
             res <- list(p=p,gamma=gamma,
@@ -345,11 +340,17 @@ mixture <- function(x, data, k=length(x),
     ##                         ##method = c("em","squarem","pem","decme","qn")
     ##                         control.method=list(em.control),
     ##                         control.run=control.run)
-    opt <- SQUAREM::squarem(p,fixptfn=EMstep,objfn=myObj,
+    opt <- SQUAREM::squarem(p,fixptfn=EMstep,#objfn=myObj,
                             control=em.control)
     ## opt <- SQUAREM::fpiter(p,fixptfn=EMstep,control=list(maxiter=100,trace=1))
 
     val <- EMstep(opt$par,all=TRUE)
+    delta <- 1e-4
+    if (any(val$prob<delta)) {
+        val$prob[val$prob<delta] <- delta
+        val$prob <- val$prob/sum(val$prob)
+    }
+    
     val <- c(val, list(member=apply(val$gamma,1,which.max),
                        k=k,
                        data=data,
@@ -364,15 +365,15 @@ mixture <- function(x, data, k=length(x),
         p0 <- coef(val)
         f <- function(p) -logLik(val,p)
         g <- function(p) -score(val,p)
-        suppressWarnings(opt <- tryCatch(ucminf(p0,f,g),error=function(x) opt))
+        ##suppressWarnings(opt <- tryCatch(ucminf(p0,f,g),error=function(x) opt))
     }
 
-
+    np <- length(coef(val))
     if (is.null(vcov)) {
-        np <- length(coef(val))
         val$vcov <- matrix(NA,np,np)
-    } else {
-        val$vcov <- Inverse(information.lvm.mixture(val,type=vcov))
+    } else {        
+        I <- suppressWarnings(information.lvm.mixture(val,type=vcov))
+        val$vcov <- tryCatch(Inverse(I),error=function(...) matrix(NA,np,np))
     }
     return(val)
 }
@@ -400,7 +401,7 @@ predict.lvm.mixture <- function(object,x=lava::vars(object$model),p=coef(object,
         m <- Model(object$multigroup)[[i]]
         P <- predict(m,data=object$data,p=myp[[i]],x=x)
         M <- M+gamma[,i]*P
-        V <- V+gamma[,i]^2*attributes(P)$cond.var
+        V <- V+gamma[,i]^2*c(attributes(P)$cond.var)
     }
     structure(M,cond.var=V)
 }
@@ -468,10 +469,10 @@ logLik.lvm.mixture <- function(object,p=coef(object,full=TRUE),prob,model="norma
   zmax <- apply(logplogff,1,max)
   logsumpff <- log(rowSums(exp(logplogff-zmax)))+zmax    
   loglik <- sum(logsumpff)
-  npar <- length(prob)-1 + length(p)
+  npar <- length(p)
   nobs <- nrow(object$data)
   attr(loglik, "nall") <- nobs
-  attr(loglik, "nobs") <- nobs-npar
+  attr(loglik, "nobs") <- nobs
   attr(loglik, "df") <- npar
   class(loglik) <- "logLik"  
   return(loglik)
