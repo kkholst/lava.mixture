@@ -19,4 +19,4 @@ License: GPL-3
 LazyLoad: yes
 URL: https://github.com/kkholst/lava.mixture
 Roxygen: list(wrap = FALSE)
-RoxygenNote: 5.0.1
+RoxygenNote: 6.0.1

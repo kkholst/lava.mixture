@@ -367,7 +367,6 @@ mixture <- function(x, data, k=length(x),
         g <- function(p) -score(val,p)
         ##suppressWarnings(opt <- tryCatch(ucminf(p0,f,g),error=function(x) opt))
     }
-
     np <- length(coef(val))
     if (is.null(vcov)) {
         val$vcov <- matrix(NA,np,np)
@@ -401,7 +400,8 @@ predict.lvm.mixture <- function(object,x=lava::vars(object$model),p=coef(object,
         m <- Model(object$multigroup)[[i]]
         P <- predict(m,data=object$data,p=myp[[i]],x=x)
         M <- M+gamma[,i]*P
-        V <- V+gamma[,i]^2*c(attributes(P)$cond.var)
+        ## V <- V+gamma[,i]^2*c(attributes(P)$cond.var)
+        V <- V+gamma[,i]^2*as.vector(attributes(P)$cond.var)
     }
     structure(M,cond.var=V)
 }
@@ -458,12 +458,15 @@ information.lvm.mixture <- function(x,p=coef(x,full=TRUE),...,type="observed") {
 
 ##' @export
 logLik.lvm.mixture <- function(object,p=coef(object,full=TRUE),prob,model="normal",...) {
+  if (is.null(object$parpos)) {
+    object$parpos <- modelPar(object$multigroup,seq_along(p))$p
+  }
   myp <- lapply(object$parpos, function(x) p[x])
   if (missing(prob))
     prob <- tail(p,object$k-1)
   if (length(prob)<object$k)
       prob <- c(prob,1-sum(prob))
-  logff <- sapply(1:object$k, function(j) (logLik(object$multigroup$lvm[[j]],p=myp[[j]],data=object$data,indiv=TRUE,model=model)))
+  logff <- sapply(seq(object$k), function(j) (logLik(object$multigroup$lvm[[j]],p=myp[[j]],data=object$data,indiv=TRUE,model=model)))
   logplogff <- t(apply(logff,1, function(y) y+log(prob)))
   ## Log-sum-exp (see e.g. NR)
   zmax <- apply(logplogff,1,max)

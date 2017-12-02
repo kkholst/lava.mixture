@@ -2,8 +2,8 @@
 % Please edit documentation in R/lava.mixture-package.R
 \docType{package}
 \name{lava.mixture-package}
-\alias{lava.mixture}
 \alias{lava.mixture-package}
+\alias{lava.mixture}
 \title{Estimation and simulation of mixtures of latent variable models.}
 \description{
 Framwork for estimating parameters from mixtures of Latent Variable Models.
@@ -13,4 +13,3 @@ Plugin for the \code{lava} package.
 Klaus K. Holst Maintainer: <k.k.holst@biostat.ku.dk>
 }
 \keyword{package}
-

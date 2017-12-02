@@ -68,12 +68,11 @@ lm(y~x,d)
 }
 
 }
-\author{
-Klaus K. Holst
-}
 \seealso{
 \code{mvnmix}
 }
+\author{
+Klaus K. Holst
+}
 \keyword{models,}
 \keyword{regression}
-

@@ -52,12 +52,11 @@ if (interactive()) {
 }
 
 }
-\author{
-Klaus K. Holst
-}
 \seealso{
 \code{mixture}
 }
+\author{
+Klaus K. Holst
+}
 \keyword{models,}
 \keyword{regression}
-

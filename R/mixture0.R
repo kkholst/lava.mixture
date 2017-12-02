@@ -40,7 +40,6 @@ mixture0 <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM"
         x <- rep(list(x),k)
     }  
 
-    
     mg <- multigroup(x,rep(list(data),k),fix=FALSE)
     ## Bounds on variance parameters
     npar <- with(mg, npar+npar.mean)
@@ -59,7 +58,6 @@ mixture0 <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM"
     lower <- c(rep(-Inf,mg$npar.mean), lower)
     constrained <- which(is.finite(lower))
     if (!any(constrained)) optim$constrain <- FALSE
-
     mymodel <- list(multigroup=mg,k=k,data=data); class(mymodel) <- "lvm.mixture"
 
     if (is.null(optim$start)) {
@@ -85,6 +83,7 @@ mixture0 <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM"
         }##    start <- optim(1:4,constrLogLikS,method="SANN",control=list(maxit=50))
         optim$start <- start
     }
+    browser()
     
     if (is.null(optim$prob))
         optim$prob <- rep(1/k,k-1)
@@ -114,6 +113,7 @@ mixture0 <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM"
     ##   logLik(mymodel,p=p,prob=prob)
     ## }
     ## EM algorithm:
+
     myObj <- function(p) {
         if (optim$constrain) {
             p[constrained] <- exp(p[constrained])
@@ -219,8 +219,7 @@ mixture0 <- function(x, data, k=length(x), control, FUN, type=c("standard","CEM"
     ## assign("MODEL",MODEL,env)
     ## assign("optim",optim,env)
     ## assign("parpos",parpos,env)
-    ## assign("constrained",constrained,env)
-    
+    ## assign("constrained",constrained,env)   
 
     on.exit(
         {
