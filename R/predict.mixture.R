@@ -17,7 +17,7 @@ predict.lvm.mixture <- function(object,x=lava::vars(object$model),p=coef(object,
         m <- Model(object$multigroup)[[i]]
         P <- predict(m,data=object$data,p=myp[[i]],x=x)
         if (!is.null(predict.fun)) {
-            M <- M+gamma[,i]*predict.fun(P,as.vector(attributes(P)$cond.var,...))
+            M <- M+gamma[,i]*predict.fun(P,as.vector(attributes(P)$cond.var), ...)
         } else {
             M <- M+gamma[,i]*P
             V <- V+gamma[,i]^2*as.vector(attributes(P)$cond.var)
